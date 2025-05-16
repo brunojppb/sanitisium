@@ -1,0 +1,4 @@
+/target
+*.pdf
+*.tgz
+.DS_Store

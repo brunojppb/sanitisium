@@ -1,0 +1,16 @@
+[package]
+name = "pdf-converter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+image = "0.25.6"
+pdfium-render = "0.8.31"
+printpdf = { version = "0.8.2", features = ["png"] }
+
+# [dependencies]
+# pdfium-render = "0.10"                # fast, low-overhead page rasterization
+# printpdf      = { version = "0.8.2", features = ["image"] }
+# image         = "0.24"
+# anyhow        = "1.0"
