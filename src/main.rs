@@ -73,14 +73,19 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
     Ok(())
 }
 
+// on MacOS, we need to bind to the library at a specific path
+// given that we already include the library in the project
+// For experimentation purposes, this is fine.
 #[cfg(target_os = "macos")]
 pub fn get_pdfium_instance() -> Pdfium {
     Pdfium::new(
         Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./pdfium/lib"))
             .or_else(|_| Pdfium::bind_to_system_library())
-            .unwrap(), // Or use the ? unwrapping operator to pass any error up to the caller
+            .unwrap()
     )
 }
+
+// On other platforms, we can use the system library directly
 
 #[cfg(not(target_os = "macos"))]
 pub fn get_pdfium_instance() -> Pdfium {
