@@ -6,6 +6,8 @@ use std::io::{Cursor, Write};
 use std::time::Instant;
 
 fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
+    const DPI: f32 = 300.0; // Set desired DPI here
+
     let pdfium = get_pdfium_instance();
 
     let doc_in = pdfium.load_pdf_from_file(input, None)?;
@@ -20,12 +22,18 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
         // — get the true media‐box in points
         let width_pts = page.page_size().width().value; // f32
         let height_pts = page.page_size().height().value; // f32
-        // Rasterize the page at exactly one pixel per PDF point
+
+        // Calculate target pixel dimensions for the desired DPI
+        let target_render_width = (width_pts * DPI / 72.0).round() as i32;
+        let target_render_height = (height_pts * DPI / 72.0).round() as i32;
+
+        // Rasterize the page at the new higher resolution
         let bitmap = page
             .render_with_config(
                 &PdfRenderConfig::new()
-                    .set_target_width(width_pts as i32)
-                    .set_target_height(height_pts as i32)
+                    .set_target_width(target_render_width)
+                    .set_target_height(target_render_height)
+                    .use_print_quality(true)
                     .set_format(PdfBitmapFormat::BGRA),
             )?
             .as_image();
@@ -48,10 +56,9 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
                 translate_x: Some(Pt(0.0)),
                 translate_y: Some(Pt(0.0)),
                 rotate: None,
-                // no scaling == 1pt in PDF = 1px of our image
-                scale_x: Some(1.0),
-                scale_y: Some(1.0),
-                dpi: Some(72.0),
+                scale_x: Some(1f32),
+                scale_y: Some(1f32),
+                dpi: Some(DPI), // Assume base image DPI is 72, then scale it
             },
         }];
 
@@ -60,6 +67,7 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
     }
 
     let mut warnings = Vec::new();
+
     let pdf_bytes = doc_out
         .with_pages(pdf_pages)
         .save(&PdfSaveOptions::default(), &mut warnings);
@@ -76,7 +84,7 @@ pub fn get_pdfium_instance() -> Pdfium {
     Pdfium::new(
         Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./pdfium/lib"))
             .or_else(|_| Pdfium::bind_to_system_library())
-            .unwrap()
+            .unwrap(),
     )
 }
 
@@ -93,7 +101,10 @@ fn main() -> Result<()> {
         let output_name = format!("output-{}.pdf", i);
         regenerate_pdf("sample.pdf", &output_name)?;
         let duration = start_time.elapsed();
-        println!("✅ Regenerated PDF saved to {} in {:?}", output_name, duration);
+        println!(
+            "✅ Regenerated PDF saved to {} in {:?}",
+            output_name, duration
+        );
     }
 
     Ok(())
