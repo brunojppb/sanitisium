@@ -33,4 +33,4 @@ This pdf file can be anything you want so you can test the program. Now run it w
 cargo run --release
 ```
 
-You should 10 PDF files as output named `output-n.pdf` with samples of how the Sanitised document looks like.
+You should get 10 PDF files as output named `output-n.pdf` with samples of how the Sanitised document looks like.
