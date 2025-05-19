@@ -5,11 +5,7 @@ use std::fs::File;
 use std::io::{Cursor, Write};
 
 fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
-    let pdfium = Pdfium::new(
-        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./pdfium/lib"))
-            .or_else(|_| Pdfium::bind_to_system_library())
-            .unwrap(), // Or use the ? unwrapping operator to pass any error up to the caller
-    );
+    let pdfium = get_pdfium_instance();
 
     let doc_in = pdfium.load_pdf_from_file(input, None)?;
     let pages = doc_in.pages();
@@ -75,6 +71,20 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
     let mut file = File::create(output)?;
     file.write_all(&pdf_bytes)?;
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn get_pdfium_instance() -> Pdfium {
+    Pdfium::new(
+        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./pdfium/lib"))
+            .or_else(|_| Pdfium::bind_to_system_library())
+            .unwrap(), // Or use the ? unwrapping operator to pass any error up to the caller
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn get_pdfium_instance() -> Pdfium {
+    Pdfium::new(Pdfium::bind_to_system_library())
 }
 
 fn main() -> Result<()> {
