@@ -3,6 +3,7 @@ use pdfium_render::prelude::*;
 use printpdf::{Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, Pt, RawImage, XObjectTransform};
 use std::fs::File;
 use std::io::{Cursor, Write};
+use std::time::Instant;
 
 fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
     let pdfium = get_pdfium_instance();
@@ -19,9 +20,6 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
         // — get the true media‐box in points
         let width_pts = page.page_size().width().value; // f32
         let height_pts = page.page_size().height().value; // f32
-
-        println!("Extracting bitmap w={} h={} pts", width_pts, height_pts);
-
         // Rasterize the page at exactly one pixel per PDF point
         let bitmap = page
             .render_with_config(
@@ -34,7 +32,6 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
 
         let mut png_data = Vec::new();
 
-        println!("Flusing bitmap");
         bitmap.write_to(&mut Cursor::new(&mut png_data), image::ImageFormat::Png)?;
 
         let mut warnings = Vec::new();
@@ -44,7 +41,6 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
         // compute page size *in mm* (printpdf::Mm expects mm)
         let width_mm = Mm(width_pts * 25.4 / 72.0);
         let height_mm = Mm(height_pts * 25.4 / 72.0);
-        println!("Push page: w={} h={} mm", width_mm.0, height_mm.0);
 
         let contents = vec![Op::UseXobject {
             id: image_id,
@@ -63,7 +59,6 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
         pdf_pages.push(pdf_page);
     }
 
-    println!("Writing final document");
     let mut warnings = Vec::new();
     let pdf_bytes = doc_out
         .with_pages(pdf_pages)
@@ -94,8 +89,11 @@ pub fn get_pdfium_instance() -> Pdfium {
 
 fn main() -> Result<()> {
     for i in 0..10 {
-        regenerate_pdf("sample.pdf", &format!("output-{}.pdf", i))?;
-        println!("✅ Regenerated PDF saved to output.pdf");
+        let start_time = Instant::now();
+        let output_name = format!("output-{}.pdf", i);
+        regenerate_pdf("sample.pdf", &output_name)?;
+        let duration = start_time.elapsed();
+        println!("✅ Regenerated PDF saved to {} in {:?}", output_name, duration);
     }
 
     Ok(())
