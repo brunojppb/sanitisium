@@ -1,6 +1,7 @@
 use anyhow::Result;
 use pdfium_render::prelude::*;
 use printpdf::{Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, Pt, RawImage, XObjectTransform};
+use std::env;
 use std::fs::File;
 use std::io::{Cursor, Write};
 use std::time::Instant;
@@ -62,6 +63,10 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
             },
         }];
 
+        println!(
+            "Page {}: {}x{} points, {}x{} mm",
+            index, width_pts, height_pts, width_mm.0, height_mm.0
+        );
         let pdf_page = PdfPage::new(width_mm, height_mm, contents);
         pdf_pages.push(pdf_page);
     }
@@ -96,16 +101,17 @@ pub fn get_pdfium_instance() -> Pdfium {
 }
 
 fn main() -> Result<()> {
-    for i in 0..10 {
-        let start_time = Instant::now();
-        let output_name = format!("output-{}.pdf", i);
-        regenerate_pdf("sample.pdf", &output_name)?;
-        let duration = start_time.elapsed();
-        println!(
-            "✅ Regenerated PDF saved to {} in {:?}",
-            output_name, duration
-        );
-    }
+    let args: Vec<String> = env::args().collect();
+    let filename = &args[1];
+
+    let start_time = Instant::now();
+    let output_name = format!("output.pdf");
+    regenerate_pdf(filename, &output_name)?;
+    let duration = start_time.elapsed();
+    println!(
+        "✅ Regenerated PDF saved to {} in {:?}",
+        output_name, duration
+    );
 
     Ok(())
 }
