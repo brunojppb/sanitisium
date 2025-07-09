@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 use anyhow::Result;
 use pdfium_render::prelude::*;
-use printpdf::{ImageOptimizationOptions, Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, XObjectTransform};
+use printpdf::{
+    ImageOptimizationOptions, Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage,
+    XObjectTransform,
+};
 use std::env;
 use std::fs::File;
 use std::io::{Cursor, Write};
@@ -36,13 +39,14 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
                     .set_target_width(target_render_width)
                     .set_target_height(target_render_height)
                     .use_print_quality(true)
-                    .set_format(PdfBitmapFormat::BGRA),
+                    .set_format(PdfBitmapFormat::BGR),
             )?
-            .as_image();
+            .as_image()
+            .to_rgb8();
 
         let mut png_data = Vec::new();
 
-        bitmap.write_to(&mut Cursor::new(&mut png_data), image::ImageFormat::Png)?;
+        bitmap.write_to(&mut Cursor::new(&mut png_data), image::ImageFormat::Jpeg)?;
 
         let mut warnings = Vec::new();
         let image = RawImage::decode_from_bytes(&png_data, &mut warnings).unwrap();
@@ -68,22 +72,20 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
     let mut warnings = Vec::new();
 
     let opts = PdfSaveOptions {
-      optimize: true,
-      secure: true,
-      subset_fonts: true,
-      image_optimization: Some(ImageOptimizationOptions {
-        auto_optimize: Some(true),
-        convert_to_greyscale: Some(false),
-        dither_greyscale: None,
-        max_image_size: None,
-        format: None,
-        quality: Some(75f32)
-      })
+        optimize: true,
+        secure: true,
+        subset_fonts: true,
+        image_optimization: Some(ImageOptimizationOptions {
+            auto_optimize: Some(true),
+            convert_to_greyscale: Some(false),
+            dither_greyscale: None,
+            max_image_size: None,
+            format: None,
+            quality: Some(75f32),
+        }),
     };
-      
-    let pdf_bytes = doc_out
-        .with_pages(pdf_pages)
-        .save(&opts, &mut warnings);
+
+    let pdf_bytes = doc_out.with_pages(pdf_pages).save(&opts, &mut warnings);
     let mut file = File::create(output)?;
     file.write_all(&pdf_bytes)?;
     Ok(())
