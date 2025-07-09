@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::Result;
 use pdfium_render::prelude::*;
 use printpdf::{ImageOptimizationOptions, Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, XObjectTransform};
@@ -88,22 +89,44 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
     Ok(())
 }
 
-// on MacOS, we need to bind to the library at a specific path
-// given that we already include the library in the project
-// For experimentation purposes, this is fine.
-#[cfg(target_os = "macos")]
-pub fn get_pdfium_instance() -> Pdfium {
+// For the sake of simplicity, we only Support Mac (ARM64) and Linux (64-bit)
+enum SupportArch {
+    MacOS,
+    Linux,
+}
+
+fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
+    let lib_arch = match arch {
+        SupportArch::MacOS => "macOS",
+        SupportArch::Linux => "linux-x64",
+    };
+
+    let lib_path = format!("./pdfium/{}/lib", lib_arch);
+
     Pdfium::new(
-        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./pdfium/lib"))
+        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path))
             .or_else(|_| Pdfium::bind_to_system_library())
             .unwrap(),
     )
 }
 
-// On other platforms, we can use the system library directly
+// on MacOS, we need to bind to the library at a specific path
+// given that we already include the library in the project
+// For experimentation purposes, this is fine.
+#[cfg(target_os = "macos")]
+fn get_pdfium_instance() -> Pdfium {
+    _get_pdfium_instance(SupportArch::MacOS)
+}
 
-#[cfg(not(target_os = "macos"))]
-pub fn get_pdfium_instance() -> Pdfium {
+#[cfg(target_os = "linux")]
+fn get_pdfium_instance() -> Pdfium {
+    _get_pdfium_instance(SupportArch::Linux)
+}
+
+// On other platforms, we can try to use the system library directly.
+// It will panic in case PDFium isn't installed.
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn get_pdfium_instance() -> Pdfium {
     Pdfium::new(Pdfium::bind_to_system_library())
 }
 
@@ -112,7 +135,7 @@ fn main() -> Result<()> {
     let filename = &args[1];
 
     let start_time = Instant::now();
-    let output_name = format!("output.pdf");
+    let output_name = format!("{}_output.pdf", &filename);
     regenerate_pdf(filename, &output_name)?;
     let duration = start_time.elapsed();
     println!(
