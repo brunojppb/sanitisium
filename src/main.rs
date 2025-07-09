@@ -1,6 +1,6 @@
 use anyhow::Result;
 use pdfium_render::prelude::*;
-use printpdf::{Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, Pt, RawImage, XObjectTransform};
+use printpdf::{ImageOptimizationOptions, Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, XObjectTransform};
 use std::env;
 use std::fs::File;
 use std::io::{Cursor, Write};
@@ -53,14 +53,7 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
 
         let contents = vec![Op::UseXobject {
             id: image_id,
-            transform: XObjectTransform {
-                translate_x: Some(Pt(0.0)),
-                translate_y: Some(Pt(0.0)),
-                rotate: None,
-                scale_x: Some(1f32),
-                scale_y: Some(1f32),
-                dpi: Some(DPI), // Assume base image DPI is 72, then scale it
-            },
+            transform: XObjectTransform::default(),
         }];
 
         println!(
@@ -73,9 +66,23 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
 
     let mut warnings = Vec::new();
 
+    let opts = PdfSaveOptions {
+      optimize: true,
+      secure: true,
+      subset_fonts: true,
+      image_optimization: Some(ImageOptimizationOptions {
+        auto_optimize: Some(true),
+        convert_to_greyscale: Some(false),
+        dither_greyscale: None,
+        max_image_size: None,
+        format: None,
+        quality: Some(75f32)
+      })
+    };
+      
     let pdf_bytes = doc_out
         .with_pages(pdf_pages)
-        .save(&PdfSaveOptions::default(), &mut warnings);
+        .save(&opts, &mut warnings);
     let mut file = File::create(output)?;
     file.write_all(&pdf_bytes)?;
     Ok(())
