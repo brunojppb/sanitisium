@@ -23,14 +23,11 @@ For other platforms, you must include pdfium as an installed dependency on your 
 
 ## How to test this locally
 
-The PoC expects only one file on the project directory:
-
-- a file named `sample.pdf`
-
+The binary expects one argument with the path to the PDF file input:
 This pdf file can be anything you want so you can test the program. Now run it with:
 
 ```shell
-cargo run --release
+cargo run --release -- sample.pdf
 ```
 
-You should get 10 PDF files as output named `output-n.pdf` with samples of how the Sanitised document looks like.
+You should get an output file named `sample.pdf_output.pdf` with the sanitised document.
