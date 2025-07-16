@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use pdfium_render::prelude::*;
 use printpdf::{
     ImageOptimizationOptions, Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage,
@@ -11,9 +11,12 @@ use std::fs::File;
 use std::io::{Cursor, Write};
 use std::time::Instant;
 
+use crate::merger::merge_pdf_files;
+mod merger;
+
 const PAGE_BATCH: u16 = 10;
 
-fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
+pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
     const DPI: f32 = 300.0; // Set desired DPI here
 
     let pdfium = get_pdfium_instance();
@@ -35,6 +38,7 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
 
     let mut acc = 0;
     let mut written_chuncks_count = 0;
+    let mut output_files: Vec<String> = Vec::new();
 
     while acc < doc_lenght {
         let mut pdf_pages = Vec::with_capacity(capacity as usize);
@@ -43,7 +47,7 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
         // Cap the trailing end of the range at maximum
         // the batch size or how many pages are left in case they are smaller than the batch size
         let top: u16 = local_acc + min(PAGE_BATCH, doc_lenght - local_acc);
-        
+
         println!("Processing start={local_acc} end={top}");
         for index in local_acc..top {
             let page = pages
@@ -111,14 +115,25 @@ fn regenerate_pdf(input: &str, output: &str) -> Result<()> {
 
         let pdf_bytes = doc_out.with_pages(pdf_pages).save(&opts, &mut warnings);
         let filename = format!("temp_file_{written_chuncks_count}.pdf");
-        let mut file = File::create(filename)?;
+        let mut file = File::create(&filename)?;
         file.write_all(&pdf_bytes)?;
-        
+
+        output_files.push(filename.clone());
         written_chuncks_count += 1;
         acc += PAGE_BATCH
     }
 
-    Ok(())
+    println!("Merging files {:#?}", output_files);
+
+    match merge_pdf_files(output_files, output_path.to_owned()) {
+      Ok(()) => Ok(()),
+      Err(e) => {
+        println!("Could not merge PDF files. error={e}");
+        Err(anyhow!("Error while merging PDF"))
+      }
+    }
+
+    
 }
 
 // For the sake of simplicity, we only Support Mac (ARM64) and Linux (64-bit)
