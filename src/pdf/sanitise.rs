@@ -45,7 +45,7 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
 
     while processed_pages_count < input_doc_length {
         let mut pdf_pages = Vec::with_capacity(chunk_processing_size as usize);
-        let mut doc_out = PdfDocument::new("Regenerated Document");
+        let mut doc_out = PdfDocument::new("Clean PDF Document");
         let local_acc: u16 = processed_pages_count;
         // Cap the trailing end of the range at maximum the batch size
         // or how many pages are left in case they are smaller than the batch size
