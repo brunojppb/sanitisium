@@ -6,6 +6,8 @@ use std::path::Path;
 
 /// Merge every file in `inputs` into a single PDF file at `output_path`.
 /// The first file becomes the "base"; all others are appended.
+///
+/// Implementation inspired on the reference example from the [lopdf repo here.](https://github.com/J-F-Liu/lopdf/blob/c320c1d9d90028ee64e668f0bbbe9815fae3fb44/examples/merge.rs)
 pub fn merge_pdf_files<P>(files: &[P], output_path: P) -> Result<(), Error>
 where
     P: AsRef<Path>,
@@ -20,7 +22,7 @@ where
     let mut merged_doc = Document::load_from(first_file)?;
 
     if files.len() == 1 {
-        // Only one file, just save it to output
+        // Only one file, just save it to the given output and bail
         merged_doc.save(output_path.as_ref())?;
         return Ok(());
     }
@@ -28,17 +30,16 @@ where
     // Track the next available object ID
     let mut max_id = merged_doc.max_id + 1;
 
-    // Collect all pages and objects from additional documents
     let mut all_pages = BTreeMap::new();
     let mut all_objects = BTreeMap::new();
 
-    // Add pages from the base document
+    // Add all pages from the base document
+    // to our accumulator
     let base_pages = merged_doc.get_pages();
     for (_, page_id) in base_pages {
         all_pages.insert(page_id, merged_doc.get_object(page_id)?.clone());
     }
 
-    // Process each additional document
     for input_path in files.iter().skip(1) {
         let file = File::open(input_path.as_ref())?;
         let mut doc = Document::load_from(file)?;
@@ -47,22 +48,23 @@ where
         doc.renumber_objects_with(max_id);
         max_id = doc.max_id + 1;
 
-        // Get pages from this document
         let pages = doc.get_pages();
 
-        // Add pages to our collection
+        // Now we should get all pages from each document
+        // and add it to our final container collection
         for (_, page_id) in pages {
             all_pages.insert(page_id, doc.get_object(page_id)?.clone());
         }
 
-        // Add all objects from this document (except Catalog and Pages which we'll handle specially)
+        // For objects that are not pages,
+        // Add all objects (except Catalog and Pages which we'll handle specially)
         for (object_id, object) in doc.objects.into_iter() {
             match object.type_name().unwrap_or(b"") {
                 b"Catalog" | b"Pages" => {
-                    // Skip these, we'll rebuild them
+                    // No-op: Skip these, we'll rebuild them
                 }
                 b"Page" => {
-                    // Pages are handled separately above
+                    // No-op: Pages have been handled separately already
                 }
                 _ => {
                     all_objects.insert(object_id, object);
@@ -110,6 +112,7 @@ where
     }
 
     // Update max_id and renumber objects to ensure consistency
+    // before saving the final merged document
     merged_doc.max_id = merged_doc.objects.len() as u32;
     merged_doc.renumber_objects();
 
