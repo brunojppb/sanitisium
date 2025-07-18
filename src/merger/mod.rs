@@ -6,7 +6,7 @@ use std::path::Path;
 
 /// Merge every file in `inputs` into a single PDF file at `output_path`.
 /// The first file becomes the "base"; all others are appended.
-pub fn merge_pdf_files<P>(files: &Vec<P>, output_path: P) -> Result<(), Error>
+pub fn merge_pdf_files<P>(files: &[P], output_path: P) -> Result<(), Error>
 where
     P: AsRef<Path>,
 {

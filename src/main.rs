@@ -15,7 +15,7 @@ use crate::merger::merge_pdf_files;
 mod merger;
 
 const PAGE_BATCH: u16 = 5;
-const JPG_QUALITY: f32 = 20f32;
+const JPG_QUALITY: f32 = 70f32;
 
 pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
     const DPI: f32 = 300.0; // Set desired DPI here
@@ -134,7 +134,7 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
                 convert_to_greyscale: Some(false),
                 dither_greyscale: None,
                 max_image_size: None,
-                format: None,
+                format: Some(printpdf::ImageCompression::Jpeg),
                 quality: Some(JPG_QUALITY),
             }),
         };
