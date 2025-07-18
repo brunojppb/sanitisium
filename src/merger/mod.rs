@@ -1,78 +1,123 @@
-use lopdf::Error;
+use anyhow::Error;
 use lopdf::{Document, Object};
+use std::collections::BTreeMap;
+use std::fs::File;
 use std::path::Path;
 
-/// Merge every file in `inputs` (they were created earlier in 5-page chunks)
-/// into `output_path`.  The first file becomes the “base”; all others are
-/// appended.
+/// Merge every file in `inputs` into a single PDF file at `output_path`.
+/// The first file becomes the "base"; all others are appended.
 pub fn merge_pdf_files<I, P>(inputs: I, output_path: P) -> Result<(), Error>
 where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
+    let input_paths: Vec<_> = inputs.into_iter().collect();
 
-    let mut iter = inputs.into_iter();
-
-    // -- 1️⃣ load the first chunk; it will donate the Catalog and Page tree ----
-    let first_path = iter
-        .next()
-        .ok_or_else(|| Error::DictKey("missing path".to_owned()))?;
-    let mut doc = Document::load(first_path.as_ref())?;
-    let pages_root = doc
-        .get_pages()
-        .iter()
-        .next()
-        .map(|(_, id)| *id)
-        .ok_or_else(|| Error::DictKey("missing pages".to_owned()))?;
-
-    // Remember all page IDs we will finally list in /Kids
-    let mut kids: Vec<Object> = Vec::new();
-    // and always keep track of the next unused object number
-    let mut max_id = doc.max_id + 1;
-
-    // Insert the pages that are already in the first file
-    for (_, page_id) in doc.get_pages() {
-        kids.push(Object::Reference(page_id));
+    if input_paths.is_empty() {
+        return Err(anyhow::anyhow!("No input files provided"));
     }
 
-    // -- 2️⃣ fold every other chunk into `doc` one by one ----------------------
-    for path in iter {
-      println!("Merging path={:?}", path.as_ref());
-        let mut other = Document::load(path.as_ref())?;
+    // Start with the first document as the base
+    let first_path = &input_paths[0];
+    let first_file = File::open(first_path.as_ref())?;
+    let mut merged_doc = Document::load_from(first_file)?;
 
-        // shift object numbers so there are no clashes
-        other.renumber_objects_with(max_id);
-        max_id = other.max_id + 1;
+    if input_paths.len() == 1 {
+        // Only one file, just save it to output
+        merged_doc.save(output_path.as_ref())?;
+        return Ok(());
+    }
 
-        
-        
+    // Track the next available object ID
+    let mut max_id = merged_doc.max_id + 1;
 
-        // move every indirect object
-        // doc.objects.extend(other.objects);
+    // Collect all pages and objects from additional documents
+    let mut all_pages = BTreeMap::new();
+    let mut all_objects = BTreeMap::new();
 
-        // for every Page in that file …
-        for (_idx, page_id) in other.get_pages() {
-          doc.objects.append(&mut other.objects);
-            //  a) tell it that its new parent is *our* Pages root
-            if let Ok(page_dict) = doc.get_object_mut(page_id)?.as_dict_mut() {
-                page_dict.set("Parent", Object::Reference(pages_root));
+    // Add pages from the base document
+    let base_pages = merged_doc.get_pages();
+    for (_, page_id) in base_pages {
+        all_pages.insert(page_id, merged_doc.get_object(page_id)?.clone());
+    }
+
+    // Process each additional document
+    for input_path in input_paths.iter().skip(1) {
+        let file = File::open(input_path.as_ref())?;
+        let mut doc = Document::load_from(file)?;
+
+        // Renumber objects to avoid conflicts
+        doc.renumber_objects_with(max_id);
+        max_id = doc.max_id + 1;
+
+        // Get pages from this document
+        let pages = doc.get_pages();
+
+        // Add pages to our collection
+        for (_, page_id) in pages {
+            all_pages.insert(page_id, doc.get_object(page_id)?.clone());
+        }
+
+        // Add all objects from this document (except Catalog and Pages which we'll handle specially)
+        for (object_id, object) in doc.objects.into_iter() {
+            match object.type_name().unwrap_or(b"") {
+                b"Catalog" | b"Pages" => {
+                    // Skip these, we'll rebuild them
+                }
+                b"Page" => {
+                    // Pages are handled separately above
+                }
+                _ => {
+                    all_objects.insert(object_id, object);
+                }
             }
-            //  b) add it to the new /Kids array
-            kids.push(Object::Reference(page_id));
         }
     }
 
-    // -- 3️⃣ patch the Pages node so it knows about the new /Kids and /Count ---
-    if let Ok(dict) = doc.get_object_mut(pages_root)?.as_dict_mut() {
-        dict.set("Kids", Object::Array(kids));
-        dict.set("Count", dict.len() as i64);
+    // Insert all collected objects into the merged document
+    for (object_id, object) in all_objects {
+        merged_doc.objects.insert(object_id, object);
     }
 
-    // -- 4️⃣ final book-keeping -------------------------------------------------
-    doc.renumber_objects(); // make the ID space dense again (optional)
-    doc.adjust_zero_pages(); // fix bookmarks whose /Page = 0
-    doc.compress(); // Flate-compress every stream (keeps size down)
-    doc.save(output_path)?;
+    // Find the Pages object in the merged document
+    let catalog = merged_doc.catalog()?;
+    let pages_id = catalog
+        .get(b"Pages")
+        .and_then(|pages_ref| pages_ref.as_reference())
+        .map_err(|_| anyhow::anyhow!("Could not find Pages object"))?;
+
+    // Update all page objects to point to the correct parent
+    for (page_id, page_obj) in all_pages.iter() {
+        if let Ok(dict) = page_obj.as_dict() {
+            let mut new_dict = dict.clone();
+            new_dict.set("Parent", pages_id);
+            merged_doc
+                .objects
+                .insert(*page_id, Object::Dictionary(new_dict));
+        }
+    }
+
+    // Update the Pages object with the new page count and kids list
+    if let Ok(pages_obj) = merged_doc.get_object_mut(pages_id) {
+        if let Ok(pages_dict) = pages_obj.as_dict_mut() {
+            // Set the new page count
+            pages_dict.set("Count", all_pages.len() as u32);
+
+            // Set the new Kids array with all page references
+            let kids: Vec<Object> = all_pages
+                .keys()
+                .map(|&page_id| Object::Reference(page_id))
+                .collect();
+            pages_dict.set("Kids", kids);
+        }
+    }
+
+    // Update max_id and renumber objects to ensure consistency
+    merged_doc.max_id = merged_doc.objects.len() as u32;
+    merged_doc.renumber_objects();
+
+    // Save the merged document
+    merged_doc.save(output_path.as_ref())?;
 
     Ok(())
 }

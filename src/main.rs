@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use pdfium_render::prelude::*;
 use printpdf::{
     ImageOptimizationOptions, Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage,
@@ -14,7 +14,7 @@ use std::time::Instant;
 use crate::merger::merge_pdf_files;
 mod merger;
 
-const PAGE_BATCH: u16 = 10;
+const PAGE_BATCH: u16 = 5;
 
 pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
     const DPI: f32 = 300.0; // Set desired DPI here
@@ -52,7 +52,7 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
         for index in local_acc..top {
             let page = pages
                 .get(index)
-                .or_else(|_| Err(anyhow!("Could not get page at index")))?;
+                .map_err(|e| anyhow!("Could not get page at index. {e}"))?;
             // Get page size in PDF points (1 point = 1/72 in)
             // — get the true media‐box in points
             let width_pts = page.page_size().width().value; // f32
@@ -118,22 +118,20 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
         let mut file = File::create(&filename)?;
         file.write_all(&pdf_bytes)?;
 
-        output_files.push(filename.clone());
+        output_files.push(filename);
         written_chuncks_count += 1;
         acc += PAGE_BATCH
     }
 
-    println!("Merging files {:#?}", output_files);
+    println!("Merging files {output_files:#?}");
 
-    match merge_pdf_files(output_files, output_path.to_owned()) {
-      Ok(()) => Ok(()),
-      Err(e) => {
-        println!("Could not merge PDF files. error={e}");
-        Err(anyhow!("Error while merging PDF"))
-      }
+    match merge_pdf_files(output_files, String::from(output_path)) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            println!("Could not merge PDF files. error={e}");
+            Err(anyhow!("Error while merging PDF"))
+        }
     }
-
-    
 }
 
 // For the sake of simplicity, we only Support Mac (ARM64) and Linux (64-bit)
@@ -148,7 +146,7 @@ fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
         SupportArch::Linux => "linux-x64",
     };
 
-    let lib_path = format!("./pdfium/{}/lib", lib_arch);
+    let lib_path = format!("./pdfium/{lib_arch}/lib");
 
     Pdfium::new(
         Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path))
@@ -185,10 +183,7 @@ fn main() -> Result<()> {
     let output_name = format!("{}_output.pdf", &filename);
     regenerate_pdf(filename, &output_name)?;
     let duration = start_time.elapsed();
-    println!(
-        "✅ Regenerated PDF saved to {} in {:?}",
-        output_name, duration
-    );
+    println!("✅ Regenerated PDF saved to {output_name} in {duration:?}");
 
     Ok(())
 }
