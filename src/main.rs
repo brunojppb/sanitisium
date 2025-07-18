@@ -22,35 +22,37 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
 
     let pdfium = get_pdfium_instance();
 
-    let doc_in = pdfium.load_pdf_from_file(input, None)?;
-    let pages = doc_in.pages();
+    let input_doc = pdfium.load_pdf_from_file(input, None)?;
+    let pages = input_doc.pages();
 
-    let doc_lenght: u16 = pages.len();
+    let input_doc_length: u16 = pages.len();
 
-    if doc_lenght == 0 {
+    if input_doc_length == 0 {
         return Err(anyhow::anyhow!("The input PDF has no pages."));
     }
 
-    let capacity = if doc_lenght > PAGE_BATCH {
+    // We process at most the PAGE_BATCH page count.
+    // In case the original PDF is smaller than that,
+    // then we can fallback to its page count
+    let chunk_processing_size = if input_doc_length > PAGE_BATCH {
         PAGE_BATCH
     } else {
-        doc_lenght
+        input_doc_length
     };
 
-    let mut acc = 0;
+    let mut processed_pages_count = 0;
     let mut written_chuncks_count = 0;
     let mut temp_pdf_files: Vec<String> = Vec::new();
     let mut bitmap_container: Option<PdfBitmap> = None;
 
-    while acc < doc_lenght {
-        let mut pdf_pages = Vec::with_capacity(capacity as usize);
+    while processed_pages_count < input_doc_length {
+        let mut pdf_pages = Vec::with_capacity(chunk_processing_size as usize);
         let mut doc_out = PdfDocument::new("Regenerated Document");
-        let local_acc: u16 = acc;
-        // Cap the trailing end of the range at maximum
-        // the batch size or how many pages are left in case they are smaller than the batch size
-        let top: u16 = local_acc + min(PAGE_BATCH, doc_lenght - local_acc);
+        let local_acc: u16 = processed_pages_count;
+        // Cap the trailing end of the range at maximum the batch size
+        // or how many pages are left in case they are smaller than the batch size
+        let top: u16 = local_acc + min(PAGE_BATCH, input_doc_length - local_acc);
 
-        println!("Processing start={local_acc} end={top}");
         for index in local_acc..top {
             let page = pages
                 .get(index)
@@ -93,12 +95,12 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
 
             // Rasterize the page at the new higher resolution
             let bitmap = rendering_container.as_image().to_rgb8();
-
             let mut jpg_data = Vec::new();
 
             bitmap.write_to(&mut Cursor::new(&mut jpg_data), image::ImageFormat::Jpeg)?;
             // Put back the reusable rendering container
-            // So we can reference it again on the next look run
+            // So we can reference it again on the next loop run
+            // preventing allocating another buffer
             bitmap_container = Some(rendering_container);
 
             let mut warnings = Vec::new();
@@ -144,7 +146,7 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
 
         temp_pdf_files.push(filename);
         written_chuncks_count += 1;
-        acc += PAGE_BATCH
+        processed_pages_count += PAGE_BATCH
     }
 
     match merge_pdf_files(&temp_pdf_files, String::from(output_path)) {
