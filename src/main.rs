@@ -151,6 +151,7 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
 
     match merge_pdf_files(&temp_pdf_files, String::from(output_path)) {
         Ok(()) => {
+            // Clean-up the temp files once we generate the final one
             temp_pdf_files.iter().for_each(|f| {
                 if let Err(e) = fs::remove_file(f) {
                     eprintln!("Could not delete temp file. error={e}")
@@ -165,7 +166,7 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
     }
 }
 
-// For the sake of simplicity, we only Support Mac (ARM64) and Linux (64-bit)
+// For the sake of simplicity, we only Support Mac (ARM64) and Linux (AMD 64-bit)
 enum SupportArch {
     MacOS,
     Linux,
