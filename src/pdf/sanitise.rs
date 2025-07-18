@@ -14,10 +14,9 @@ use crate::pdf::merge::merge_pdf_files;
 
 const PAGE_BATCH: u16 = 5;
 const JPG_QUALITY: f32 = 70f32;
+const DPI: f32 = 300.0;
 
 pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
-    const DPI: f32 = 300.0; // Set desired DPI here
-
     let pdfium = get_pdfium_instance();
 
     let input_doc = pdfium.load_pdf_from_file(input, None)?;
