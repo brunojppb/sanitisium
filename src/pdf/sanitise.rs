@@ -16,6 +16,14 @@ const PAGE_BATCH: u16 = 5;
 const JPG_QUALITY: f32 = 70f32;
 const DPI: f32 = 300.0;
 
+/// Regenerate the input PDF as an entire new file.
+/// By taking screenshots of each page of the input file
+/// and generating a new PDF, we make sure that the new file
+/// is completely sanitised given it is a complete regeneration.
+///
+/// The trade-off here is that we lose the native PDF objects
+/// and JPGs embedded into the final PDF can potentially generate
+/// files that are 10x larger.
 pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
     let pdfium = get_pdfium_instance();
 
