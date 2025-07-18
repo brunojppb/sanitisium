@@ -6,6 +6,6 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.98"
 image = "0.25.6"
-pdfium-render = "0.8.31"
-printpdf = { version = "0.8.2", features = ["png"] }
-lopdf = { version = "0.36.0" }
+pdfium-render = { version = "0.8.31", features = ["image"] }
+printpdf = { version = "0.8.2", features = ["jpeg"] }
+lopdf = "0.36.0"

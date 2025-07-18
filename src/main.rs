@@ -6,15 +6,16 @@ use printpdf::{
     XObjectTransform,
 };
 use std::cmp::min;
-use std::env;
 use std::fs::File;
 use std::io::{Cursor, Write};
 use std::time::Instant;
+use std::{env, fs};
 
 use crate::merger::merge_pdf_files;
 mod merger;
 
 const PAGE_BATCH: u16 = 5;
+const JPG_QUALITY: f32 = 20f32;
 
 pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
     const DPI: f32 = 300.0; // Set desired DPI here
@@ -38,7 +39,8 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
 
     let mut acc = 0;
     let mut written_chuncks_count = 0;
-    let mut output_files: Vec<String> = Vec::new();
+    let mut temp_pdf_files: Vec<String> = Vec::new();
+    let mut bitmap_container: Option<PdfBitmap> = None;
 
     while acc < doc_lenght {
         let mut pdf_pages = Vec::with_capacity(capacity as usize);
@@ -62,23 +64,45 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
             let target_render_width = (width_pts * DPI / 72.0).round() as i32;
             let target_render_height = (height_pts * DPI / 72.0).round() as i32;
 
+            // Make sure we have a pre-allocated container for the given page dimensions
+            match &bitmap_container {
+                Some(existing_container)
+                    if existing_container.width() == target_render_width
+                        && existing_container.height() == target_render_height => {}
+                _ => {
+                    let new_container = PdfBitmap::empty(
+                        target_render_width,
+                        target_render_height,
+                        PdfBitmapFormat::BGR,
+                        pdfium.bindings(),
+                    )
+                    .expect("Could not create PDFBitmap container for rendering");
+                    bitmap_container = Some(new_container);
+                }
+            };
+
+            let mut rendering_container = bitmap_container.take().unwrap();
+
+            page.render_into_bitmap_with_config(
+                &mut rendering_container,
+                &PdfRenderConfig::new()
+                    .set_target_width(target_render_width)
+                    .set_target_height(target_render_height)
+                    .set_format(PdfBitmapFormat::BGR),
+            )?;
+
             // Rasterize the page at the new higher resolution
-            let bitmap = page
-                .render_with_config(
-                    &PdfRenderConfig::new()
-                        .set_target_width(target_render_width)
-                        .set_target_height(target_render_height)
-                        .use_print_quality(true)
-                        .set_format(PdfBitmapFormat::BGRA),
-                )?
-                .as_image();
+            let bitmap = rendering_container.as_image().to_rgb8();
 
-            let mut png_data = Vec::new();
+            let mut jpg_data = Vec::new();
 
-            bitmap.write_to(&mut Cursor::new(&mut png_data), image::ImageFormat::Png)?;
+            bitmap.write_to(&mut Cursor::new(&mut jpg_data), image::ImageFormat::Jpeg)?;
+            // Put back the reusable rendering container
+            // So we can reference it again on the next look run
+            bitmap_container = Some(rendering_container);
 
             let mut warnings = Vec::new();
-            let image = RawImage::decode_from_bytes(&png_data, &mut warnings).unwrap();
+            let image = RawImage::decode_from_bytes(&jpg_data, &mut warnings).unwrap();
             let image_id = doc_out.add_image(&image);
 
             // compute page size *in mm* (printpdf::Mm expects mm)
@@ -109,7 +133,7 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
                 dither_greyscale: None,
                 max_image_size: None,
                 format: None,
-                quality: Some(70f32),
+                quality: Some(JPG_QUALITY),
             }),
         };
 
@@ -118,17 +142,22 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
         let mut file = File::create(&filename)?;
         file.write_all(&pdf_bytes)?;
 
-        output_files.push(filename);
+        temp_pdf_files.push(filename);
         written_chuncks_count += 1;
         acc += PAGE_BATCH
     }
 
-    println!("Merging files {output_files:#?}");
-
-    match merge_pdf_files(output_files, String::from(output_path)) {
-        Ok(()) => Ok(()),
+    match merge_pdf_files(&temp_pdf_files, String::from(output_path)) {
+        Ok(()) => {
+            temp_pdf_files.iter().for_each(|f| {
+                if let Err(e) = fs::remove_file(f) {
+                    eprintln!("Could not delete temp file. error={e}")
+                }
+            });
+            Ok(())
+        }
         Err(e) => {
-            println!("Could not merge PDF files. error={e}");
+            eprintln!("Could not merge PDF files. error={e}");
             Err(anyhow!("Error while merging PDF"))
         }
     }
@@ -170,6 +199,7 @@ fn get_pdfium_instance() -> Pdfium {
 
 // On other platforms, we can try to use the system library directly.
 // It will panic in case PDFium isn't installed.
+// Sorry Windows folks...
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn get_pdfium_instance() -> Pdfium {
     Pdfium::new(Pdfium::bind_to_system_library())

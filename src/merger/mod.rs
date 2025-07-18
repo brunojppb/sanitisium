@@ -6,23 +6,20 @@ use std::path::Path;
 
 /// Merge every file in `inputs` into a single PDF file at `output_path`.
 /// The first file becomes the "base"; all others are appended.
-pub fn merge_pdf_files<I, P>(inputs: I, output_path: P) -> Result<(), Error>
+pub fn merge_pdf_files<P>(files: &Vec<P>, output_path: P) -> Result<(), Error>
 where
-    I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
-    let input_paths: Vec<_> = inputs.into_iter().collect();
-
-    if input_paths.is_empty() {
+    if files.is_empty() {
         return Err(anyhow::anyhow!("No input files provided"));
     }
 
     // Start with the first document as the base
-    let first_path = &input_paths[0];
+    let first_path = &files[0];
     let first_file = File::open(first_path.as_ref())?;
     let mut merged_doc = Document::load_from(first_file)?;
 
-    if input_paths.len() == 1 {
+    if files.len() == 1 {
         // Only one file, just save it to output
         merged_doc.save(output_path.as_ref())?;
         return Ok(());
@@ -42,7 +39,7 @@ where
     }
 
     // Process each additional document
-    for input_path in input_paths.iter().skip(1) {
+    for input_path in files.iter().skip(1) {
         let file = File::open(input_path.as_ref())?;
         let mut doc = Document::load_from(file)?;
 
