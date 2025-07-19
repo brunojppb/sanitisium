@@ -1,11 +1,8 @@
 use anyhow::Result;
+use sanitiser::pdf::sanitise::regenerate_pdf;
 
 use std::env;
 use std::time::Instant;
-
-mod pdf;
-
-use crate::pdf::sanitise::regenerate_pdf;
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();

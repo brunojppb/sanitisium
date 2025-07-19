@@ -3,6 +3,7 @@ use lopdf::{Document, Object};
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::Path;
+use std::time::Instant;
 
 /// Merge every file in `inputs` into a single PDF file at `output_path`.
 /// The first file becomes the "base"; all others are appended.
@@ -15,6 +16,8 @@ where
     if files.is_empty() {
         return Err(anyhow::anyhow!("No input files provided"));
     }
+
+    let start_time = Instant::now();
 
     // Start with the first document as the base
     let first_path = &files[0];
@@ -118,6 +121,6 @@ where
 
     // Save the merged document
     merged_doc.save(output_path.as_ref())?;
-
+    println!("Time taken to merge final PDF: {:?}", start_time.elapsed());
     Ok(())
 }

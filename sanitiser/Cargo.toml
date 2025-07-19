@@ -1,0 +1,13 @@
+[package]
+name = "sanitiser"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.86.0"
+
+[dependencies]
+anyhow = { workspace = true }
+image = "0.25.6"
+# Using PDF libraries from: https://github.com/bblanchon/pdfium-binaries
+pdfium-render = { version = "0.8.34", features = ["image"] }
+printpdf = { version = "0.8.2", features = ["jpeg"] }
+lopdf = "0.36.0"
