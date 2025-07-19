@@ -141,7 +141,7 @@ where
                 transform: XObjectTransform::default(),
             }];
 
-            println!("Page {} regenerated", index);
+            println!("Page {index} regenerated");
             let pdf_page = PdfPage::new(width_mm, height_mm, contents);
             pdf_pages.push(pdf_page);
         }
@@ -279,8 +279,7 @@ mod tests {
         let result = regenerate_pdf(&input, &output_path);
         assert!(
             result.is_ok(),
-            "Failed to regenerate single page PDF: {:?}",
-            result
+            "Failed to regenerate single page PDF: {result:?}"
         );
 
         // Verify the output file exists and is a valid PDF
@@ -289,8 +288,7 @@ mod tests {
         let output_doc = Document::load_from(output_file);
         assert!(
             output_doc.is_ok(),
-            "Output is not a valid PDF: {:?}",
-            output_doc
+            "Output is not a valid PDF: {output_doc:?}"
         );
 
         // Load the original to compare page count
@@ -317,8 +315,7 @@ mod tests {
         let result = regenerate_pdf(&input, &output_path);
         assert!(
             result.is_ok(),
-            "Failed to regenerate multi-page PDF: {:?}",
-            result
+            "Failed to regenerate multi-page PDF: {result:?}"
         );
 
         // Verify the output file exists and is a valid PDF
@@ -351,8 +348,7 @@ mod tests {
         let result = regenerate_pdf(&input, &output_path);
         assert!(
             result.is_ok(),
-            "Failed to regenerate PDF with images: {:?}",
-            result
+            "Failed to regenerate PDF with images: {result:?}"
         );
 
         assert!(output_path.exists(), "Output file does not exist");
@@ -381,7 +377,7 @@ mod tests {
         let output_path = output_file.path().to_path_buf();
 
         let result = regenerate_pdf(&input, &output_path);
-        assert!(result.is_ok(), "Failed to regenerate PDF: {:?}", result);
+        assert!(result.is_ok(), "Failed to regenerate PDF: {result:?}");
 
         let original_size = std::fs::metadata(&input)
             .expect("Failed to get original file size")
@@ -484,10 +480,10 @@ mod tests {
 
         // Look for any existing temp files before running the function
         let current_dir = std::env::current_dir().expect("Failed to get current directory");
-        let temp_file_pattern = format!("{}_temp_file_", input_filename);
+        let temp_file_pattern = format!("{input_filename}_temp_file_");
 
         let result = regenerate_pdf(&input, &output_path);
-        assert!(result.is_ok(), "Failed to regenerate PDF: {:?}", result);
+        assert!(result.is_ok(), "Failed to regenerate PDF: {result:?}");
 
         // After successful execution, temp files should be cleaned up
         // Check current directory for any remaining temp files
@@ -497,8 +493,7 @@ mod tests {
                 if let Some(name) = filename.to_str() {
                     assert!(
                         !name.starts_with(&temp_file_pattern),
-                        "Temp file {} should have been cleaned up",
-                        name
+                        "Temp file {name} should have been cleaned up"
                     );
                 }
             }
@@ -516,8 +511,7 @@ mod tests {
         let result = regenerate_pdf(&input, &output_path);
         assert!(
             result.is_ok(),
-            "Failed to regenerate PDF with batch processing: {:?}",
-            result
+            "Failed to regenerate PDF with batch processing: {result:?}"
         );
 
         let output_file = File::open(&output_path).expect("Failed to open output file");
