@@ -6,10 +6,10 @@ use printpdf::{
     XObjectTransform,
 };
 use std::cmp::min;
-use std::fs;
 use std::fs::File;
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
+use std::{env, fs};
 use uuid::Uuid;
 
 use crate::pdf::merge::merge_pdf_files;
@@ -165,11 +165,13 @@ where
 
         let filename =
             format!("{input_filename}_temp_file_{unique_temp_id}_{written_chuncks_count}.pdf");
-        let temp_path = PathBuf::from(filename);
-        let mut file = File::create(&temp_path)?;
+        let mut temp_file = env::temp_dir();
+        temp_file.push(filename);
+
+        let mut file = File::create(&temp_file)?;
         file.write_all(&pdf_bytes)?;
 
-        temp_pdf_files.push(temp_path);
+        temp_pdf_files.push(temp_file);
         written_chuncks_count += 1;
         processed_pages_count += PAGE_BATCH
     }
