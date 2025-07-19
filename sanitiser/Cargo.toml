@@ -6,6 +6,7 @@ rust-version = "1.86.0"
 
 [dependencies]
 anyhow = { workspace = true }
+uuid = { workspace = true }
 image = "0.25.6"
 # Using PDF libraries from: https://github.com/bblanchon/pdfium-binaries
 pdfium-render = { version = "0.8.34", features = ["image"] }
