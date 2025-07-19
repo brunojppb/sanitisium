@@ -26,7 +26,7 @@ For other platforms, you must include pdfium as an installed dependency on your 
 The binary expects one argument with the path to the PDF file input.
 This pdf file can be anything you want so you can test the program.
 
-Optionally, you can give an output file path to save it the final result.
+Optionally, you can give an output file path to save the final result.
 
 Here is how to run it:
 
