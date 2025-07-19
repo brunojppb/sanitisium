@@ -2242,6 +2242,7 @@ dependencies = [
  "lopdf 0.36.0",
  "pdfium-render",
  "printpdf",
+ "tempfile",
 ]
 
 [[package]]

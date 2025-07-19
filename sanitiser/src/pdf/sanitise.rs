@@ -170,7 +170,7 @@ where
         processed_pages_count += PAGE_BATCH
     }
 
-    match merge_pdf_files(&temp_pdf_files, PathBuf::from(output_path.as_ref())) {
+    match merge_pdf_files(&temp_pdf_files, &PathBuf::from(output_path.as_ref())) {
         Ok(()) => {
             // Clean-up the temp files once we generate the final one
             temp_pdf_files.iter().for_each(|f| {
