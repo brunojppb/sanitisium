@@ -1,4 +1,4 @@
-use anyhow::Error;
+use anyhow::{Context, Error};
 use lopdf::{Document, Object};
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -21,8 +21,14 @@ where
 
     // Start with the first document as the base
     let first_path = &files[0];
-    let first_file = File::open(first_path.as_ref())?;
-    let mut merged_doc = Document::load_from(first_file)?;
+    let first_file = File::open(first_path.as_ref()).context(format!(
+        "Could not open initial file. first_path='{:?}'",
+        first_path.as_ref().to_str()
+    ))?;
+    let mut merged_doc = Document::load_from(first_file).context(format!(
+        "Could not load PDF document. path='{:?}'",
+        first_path.as_ref().to_str()
+    ))?;
 
     if files.len() == 1 {
         // Only one file, just save it to the given output and bail
@@ -202,10 +208,7 @@ mod tests {
         let output_file = NamedTempFile::new().expect("Failed to create temp file");
         let output_path = output_file.path().to_path_buf();
 
-        let result = merge_pdf_files(
-            &[input1.clone(), input2.clone(), input3.clone()],
-            &output_path,
-        );
+        let result = merge_pdf_files(&[&input1, &input2, &input3], &&output_path);
         assert!(result.is_ok(), "Failed to merge multiple PDFs: {result:?}");
 
         // Verify the output file exists and is a valid PDF
