@@ -45,10 +45,7 @@ fn main() -> Result<()> {
     };
 
     let start_time = Instant::now();
-    regenerate_pdf(
-        args.input.to_str().expect("Invalid input file path"),
-        output_path.to_str().expect("Invalid output file path"),
-    )?;
+    regenerate_pdf(&args.input, &output_path)?;
 
     let duration = start_time.elapsed();
     println!(

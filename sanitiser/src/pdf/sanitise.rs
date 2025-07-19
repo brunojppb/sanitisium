@@ -9,6 +9,7 @@ use std::cmp::min;
 use std::fs;
 use std::fs::File;
 use std::io::{Cursor, Write};
+use std::path::{Path, PathBuf};
 
 use crate::pdf::merge::merge_pdf_files;
 
@@ -24,8 +25,17 @@ const DPI: f32 = 300.0;
 /// The trade-off here is that we lose the native PDF objects
 /// and JPGs embedded into the final PDF can potentially generate
 /// files that are 10x larger.
-pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
+pub fn regenerate_pdf<P>(input: &P, output_path: &P) -> Result<()>
+where
+    P: AsRef<Path>,
+{
     let pdfium = get_pdfium_instance();
+
+    let input_filename = input
+        .as_ref()
+        .file_stem()
+        .and_then(|f| f.to_str())
+        .ok_or(anyhow!("Invalid input file"))?;
 
     let input_doc = pdfium.load_pdf_from_file(input, None)?;
     let pages = input_doc.pages();
@@ -47,7 +57,7 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
 
     let mut processed_pages_count = 0;
     let mut written_chuncks_count = 0;
-    let mut temp_pdf_files: Vec<String> = Vec::new();
+    let mut temp_pdf_files: Vec<_> = Vec::new();
     let mut bitmap_container: Option<PdfBitmap> = None;
 
     while processed_pages_count < input_doc_length {
@@ -88,7 +98,9 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
                 }
             };
 
-            let mut rendering_container = bitmap_container.take().unwrap();
+            let mut rendering_container = bitmap_container
+                .take()
+                .ok_or(anyhow!("Bitmap container cannot be empty"))?;
 
             page.render_into_bitmap_with_config(
                 &mut rendering_container,
@@ -109,7 +121,10 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
             bitmap_container = Some(rendering_container);
 
             let mut warnings = Vec::new();
-            let image = RawImage::decode_from_bytes(&jpg_data, &mut warnings).unwrap();
+            let image = RawImage::decode_from_bytes(&jpg_data, &mut warnings).map_err(|e| {
+                anyhow!("Could not decode image from bytes on page {index} error={e}")
+            })?;
+
             let image_id = doc_out.add_image(&image);
 
             // compute page size *in mm* (printpdf::Mm expects mm)
@@ -142,16 +157,20 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
         };
 
         let pdf_bytes = doc_out.with_pages(pdf_pages).save(&opts, &mut warnings);
-        let filename = format!("temp_file_{written_chuncks_count}.pdf");
-        let mut file = File::create(&filename)?;
+
+        // @TODO: We should probably take a temp directory
+        // to use it as a container for all temp files
+        let filename = format!("{input_filename}_temp_file_{written_chuncks_count}.pdf");
+        let temp_path = PathBuf::from(filename);
+        let mut file = File::create(&temp_path)?;
         file.write_all(&pdf_bytes)?;
 
-        temp_pdf_files.push(filename);
+        temp_pdf_files.push(temp_path);
         written_chuncks_count += 1;
         processed_pages_count += PAGE_BATCH
     }
 
-    match merge_pdf_files(&temp_pdf_files, String::from(output_path)) {
+    match merge_pdf_files(&temp_pdf_files, PathBuf::from(output_path.as_ref())) {
         Ok(()) => {
             // Clean-up the temp files once we generate the final one
             temp_pdf_files.iter().for_each(|f| {
