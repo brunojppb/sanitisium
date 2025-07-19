@@ -1,8 +1,9 @@
 [package]
-name = "cli"
+name = "sanitisium-cli"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 sanitiser = { path = "../sanitiser" }
 anyhow = { workspace = true }
+clap = { version = "4.0", features = ["derive"] }

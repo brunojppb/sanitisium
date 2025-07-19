@@ -121,10 +121,7 @@ pub fn regenerate_pdf(input: &str, output_path: &str) -> Result<()> {
                 transform: XObjectTransform::default(),
             }];
 
-            println!(
-                "Page {}: {}x{} points, {}x{} mm",
-                index, width_pts, height_pts, width_mm.0, height_mm.0
-            );
+            println!("Page {} regenerated", index);
             let pdf_page = PdfPage::new(width_mm, height_mm, contents);
             pdf_pages.push(pdf_page);
         }

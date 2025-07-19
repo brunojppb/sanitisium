@@ -23,11 +23,32 @@ For other platforms, you must include pdfium as an installed dependency on your 
 
 ## How to test this locally
 
-The binary expects one argument with the path to the PDF file input:
-This pdf file can be anything you want so you can test the program. Now run it with:
+The binary expects one argument with the path to the PDF file input.
+This pdf file can be anything you want so you can test the program.
+
+Optionally, you can give an output file path to save it the final result.
+
+Here is how to run it:
 
 ```shell
-cargo run -p cli --release -- sample.pdf
+cargo run -p sanitisium cli --release -- sample.pdf --output my_clean_file.pdf
 ```
 
-You should get an output file named `sample.pdf_output.pdf` with the sanitised document.
+To check all the CLI arguments available, run with the `--help` flag:
+
+```shell
+cargo run -p sanitisium cli --release -- --help
+# You should see the following output
+
+Tool for regenerating PDFs
+
+Usage: sanitisium-cli [OPTIONS] <INPUT>
+
+Arguments:
+  <INPUT>  The PDF file to sanitise
+
+Options:
+  -o, --output <OUTPUT>  Output path for the sanitised PDF. Defaults to the input filename prefixed with 'regenerated_'
+  -h, --help             Print help
+  -V, --version          Print version
+```
