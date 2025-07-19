@@ -150,7 +150,7 @@ mod tests {
         let output_path = output_file.path().to_path_buf();
 
         let result = merge_pdf_files(&[input], &output_path);
-        assert!(result.is_ok(), "Failed to merge single PDF: {:?}", result);
+        assert!(result.is_ok(), "Failed to merge single PDF: {result:?}");
 
         // Verify the output file exists and is a valid PDF
         assert!(output_path.exists(), "Output file does not exist");
@@ -167,7 +167,7 @@ mod tests {
         let output_path = output_file.path().to_path_buf();
 
         let result = merge_pdf_files(&[input1.clone(), input2.clone()], &output_path);
-        assert!(result.is_ok(), "Failed to merge two PDFs: {:?}", result);
+        assert!(result.is_ok(), "Failed to merge two PDFs: {result:?}");
 
         // Verify the output file exists and is a valid PDF
         assert!(output_path.exists(), "Output file does not exist");
@@ -206,11 +206,7 @@ mod tests {
             &[input1.clone(), input2.clone(), input3.clone()],
             &output_path,
         );
-        assert!(
-            result.is_ok(),
-            "Failed to merge multiple PDFs: {:?}",
-            result
-        );
+        assert!(result.is_ok(), "Failed to merge multiple PDFs: {result:?}");
 
         // Verify the output file exists and is a valid PDF
         assert!(output_path.exists(), "Output file does not exist");
@@ -251,8 +247,7 @@ mod tests {
         let error_message = result.unwrap_err().to_string();
         assert!(
             error_message.contains("No input files provided"),
-            "Error message should mention no input files, got: {}",
-            error_message
+            "Error message should mention no input files, got: {error_message}"
         );
     }
 
