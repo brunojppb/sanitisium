@@ -6,10 +6,11 @@ use printpdf::{
     XObjectTransform,
 };
 use std::cmp::min;
-use std::fs;
 use std::fs::File;
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
+use std::{env, fs};
+use uuid::Uuid;
 
 use crate::pdf::merge::merge_pdf_files;
 
@@ -59,6 +60,10 @@ where
     let mut written_chuncks_count = 0;
     let mut temp_pdf_files: Vec<_> = Vec::new();
     let mut bitmap_container: Option<PdfBitmap> = None;
+    // Unique identifier for prefixing the temporary cache files.
+    // This allows us to prevent any clasing in case consumers
+    // are sanitizing the same file at once.
+    let unique_temp_id = Uuid::new_v4();
 
     while processed_pages_count < input_doc_length {
         let mut pdf_pages = Vec::with_capacity(chunk_processing_size as usize);
@@ -136,7 +141,7 @@ where
                 transform: XObjectTransform::default(),
             }];
 
-            println!("Page {} regenerated", index);
+            println!("Page {index} regenerated");
             let pdf_page = PdfPage::new(width_mm, height_mm, contents);
             pdf_pages.push(pdf_page);
         }
@@ -158,33 +163,41 @@ where
 
         let pdf_bytes = doc_out.with_pages(pdf_pages).save(&opts, &mut warnings);
 
-        // @TODO: We should probably take a temp directory
-        // to use it as a container for all temp files
-        let filename = format!("{input_filename}_temp_file_{written_chuncks_count}.pdf");
-        let temp_path = PathBuf::from(filename);
-        let mut file = File::create(&temp_path)?;
+        let filename =
+            format!("{input_filename}_temp_file_{unique_temp_id}_{written_chuncks_count}.pdf");
+        let mut temp_file = env::temp_dir();
+        temp_file.push(filename);
+
+        let mut file = File::create(&temp_file)?;
         file.write_all(&pdf_bytes)?;
 
-        temp_pdf_files.push(temp_path);
+        temp_pdf_files.push(temp_file);
         written_chuncks_count += 1;
         processed_pages_count += PAGE_BATCH
     }
 
-    match merge_pdf_files(&temp_pdf_files, PathBuf::from(output_path.as_ref())) {
+    match merge_pdf_files(&temp_pdf_files, &PathBuf::from(output_path.as_ref())) {
         Ok(()) => {
             // Clean-up the temp files once we generate the final one
-            temp_pdf_files.iter().for_each(|f| {
-                if let Err(e) = fs::remove_file(f) {
-                    eprintln!("Could not delete temp file. error={e}")
-                }
-            });
+            clean_up_temp_files(&temp_pdf_files);
             Ok(())
         }
         Err(e) => {
+            clean_up_temp_files(&temp_pdf_files);
             eprintln!("Could not merge PDF files. error={e}");
             Err(anyhow!("Error while merging PDF"))
         }
     }
+}
+
+/// Delete the given files
+/// Failure to remove them should not halt the process
+fn clean_up_temp_files(files: &[PathBuf]) {
+    files.iter().for_each(|f| {
+        if let Err(e) = fs::remove_file(f) {
+            eprintln!("Could not delete temp file. error={e}")
+        }
+    });
 }
 
 // For the sake of simplicity, we only Support Mac (ARM64) and Linux (AMD 64-bit)
@@ -199,10 +212,22 @@ fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
         SupportArch::Linux => "linux-x64",
     };
 
-    let lib_path = format!("./pdfium/{lib_arch}/lib");
+    let mut lib_path = PathBuf::from("pdfium");
+    lib_path.push(lib_arch);
+    lib_path.push("lib");
+
+    // During tests, go up from sanitiser/ to workspace root
+    let mut test_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    test_path.pop();
+    test_path.push("pdfium");
+    test_path.push(lib_arch);
+    test_path.push("lib");
 
     Pdfium::new(
         Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path))
+            .or_else(|_| {
+                Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&test_path))
+            })
             .or_else(|_| Pdfium::bind_to_system_library())
             .unwrap(),
     )
@@ -227,4 +252,287 @@ fn get_pdfium_instance() -> Pdfium {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn get_pdfium_instance() -> Pdfium {
     Pdfium::new(Pdfium::bind_to_system_library())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopdf::Document;
+    use std::fs::File;
+    use std::path::PathBuf;
+    use tempfile::NamedTempFile;
+
+    /// Helper for loading test PDF files under the `tests` directory
+    fn get_test_pdf_path(filename: &str) -> PathBuf {
+        // Navigate to the workspace root and then to tests directory
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.pop(); // Go up from sanitiser/ to workspace root
+        path.push("tests");
+        path.push(filename);
+        path
+    }
+
+    #[test]
+    fn test_regenerate_pdf_single_page() {
+        let input = get_test_pdf_path("page-sizes-test.pdf");
+        let output_file = NamedTempFile::new().expect("Failed to create temp file");
+        let output_path = output_file.path().to_path_buf();
+
+        let result = regenerate_pdf(&input, &output_path);
+        assert!(
+            result.is_ok(),
+            "Failed to regenerate single page PDF: {result:?}"
+        );
+
+        // Verify the output file exists and is a valid PDF
+        assert!(output_path.exists(), "Output file does not exist");
+        let output_file = File::open(&output_path).expect("Failed to open output file");
+        let output_doc = Document::load_from(output_file);
+        assert!(
+            output_doc.is_ok(),
+            "Output is not a valid PDF: {output_doc:?}"
+        );
+
+        // Load the original to compare page count
+        let original_file = File::open(&input).expect("Failed to open original file");
+        let original_doc = Document::load_from(original_file).expect("Failed to load original PDF");
+        let original_pages = original_doc.get_pages();
+
+        let regenerated_doc = output_doc.unwrap();
+        let regenerated_pages = regenerated_doc.get_pages();
+
+        assert_eq!(
+            original_pages.len(),
+            regenerated_pages.len(),
+            "Regenerated PDF should have the same number of pages as original"
+        );
+    }
+
+    #[test]
+    fn test_regenerate_pdf_multiple_pages() {
+        let input = get_test_pdf_path("annotations-test.pdf");
+        let output_file = NamedTempFile::new().expect("Failed to create temp file");
+        let output_path = output_file.path().to_path_buf();
+
+        let result = regenerate_pdf(&input, &output_path);
+        assert!(
+            result.is_ok(),
+            "Failed to regenerate multi-page PDF: {result:?}"
+        );
+
+        // Verify the output file exists and is a valid PDF
+        assert!(output_path.exists(), "Output file does not exist");
+        let output_file = File::open(&output_path).expect("Failed to open output file");
+        let output_doc = Document::load_from(output_file);
+        assert!(output_doc.is_ok(), "Output is not a valid PDF");
+
+        // Load the original to compare page count
+        let original_file = File::open(&input).expect("Failed to open original file");
+        let original_doc = Document::load_from(original_file).expect("Failed to load original PDF");
+        let original_pages = original_doc.get_pages();
+
+        let regenerated_doc = output_doc.unwrap();
+        let regenerated_pages = regenerated_doc.get_pages();
+
+        assert_eq!(
+            original_pages.len(),
+            regenerated_pages.len(),
+            "Regenerated PDF should have the same number of pages as original"
+        );
+    }
+
+    #[test]
+    fn test_regenerate_pdf_with_images() {
+        let input = get_test_pdf_path("image-test.pdf");
+        let output_file = NamedTempFile::new().expect("Failed to create temp file");
+        let output_path = output_file.path().to_path_buf();
+
+        let result = regenerate_pdf(&input, &output_path);
+        assert!(
+            result.is_ok(),
+            "Failed to regenerate PDF with images: {result:?}"
+        );
+
+        assert!(output_path.exists(), "Output file does not exist");
+        let output_file = File::open(&output_path).expect("Failed to open output file");
+        let output_doc = Document::load_from(output_file);
+        assert!(output_doc.is_ok(), "Output is not a valid PDF");
+
+        let original_file = File::open(&input).expect("Failed to open original file");
+        let original_doc = Document::load_from(original_file).expect("Failed to load original PDF");
+        let original_pages = original_doc.get_pages();
+
+        let regenerated_doc = output_doc.unwrap();
+        let regenerated_pages = regenerated_doc.get_pages();
+
+        assert_eq!(
+            original_pages.len(),
+            regenerated_pages.len(),
+            "Regenerated PDF should have the same number of pages as original"
+        );
+    }
+
+    #[test]
+    fn test_regenerate_pdf_file_size_comparison() {
+        let input = get_test_pdf_path("export-test.pdf");
+        let output_file = NamedTempFile::new().expect("Failed to create temp file");
+        let output_path = output_file.path().to_path_buf();
+
+        let result = regenerate_pdf(&input, &output_path);
+        assert!(result.is_ok(), "Failed to regenerate PDF: {result:?}");
+
+        let original_size = std::fs::metadata(&input)
+            .expect("Failed to get original file size")
+            .len();
+        let regenerated_size = std::fs::metadata(&output_path)
+            .expect("Failed to get regenerated file size")
+            .len();
+
+        // The regenerated file should exist and have some content.
+        // The rengerated file is generally 10x larger than the original one
+        // So there is no point in comparing exact file sizes
+        assert!(
+            regenerated_size > original_size,
+            "Regenerated file should be larger than original file"
+        );
+    }
+
+    #[test]
+    fn test_regenerate_pdf_nonexistent_file() {
+        let nonexistent = PathBuf::from("/path/that/does/not/exist.pdf");
+        let output_file = NamedTempFile::new().expect("Failed to create temp file");
+        let output_path = output_file.path().to_path_buf();
+
+        let result = regenerate_pdf(&nonexistent, &output_path);
+        assert!(result.is_err(), "Should return error for nonexistent file");
+    }
+
+    #[test]
+    fn test_regenerate_pdf_invalid_output_path() {
+        let input = get_test_pdf_path("page-sizes-test.pdf");
+        let invalid_output = PathBuf::from("/invalid/directory/that/does/not/exist/output.pdf");
+
+        let result = regenerate_pdf(&input, &invalid_output);
+        assert!(
+            result.is_err(),
+            "Should return error for invalid output path"
+        );
+    }
+
+    #[test]
+    fn test_regenerate_pdf_output_structure() {
+        let input = get_test_pdf_path("annotations-test.pdf");
+        let output_file = NamedTempFile::new().expect("Failed to create temp file");
+        let output_path = output_file.path().to_path_buf();
+
+        regenerate_pdf(&input, &output_path).expect("Failed to regenerate PDF");
+
+        let output_file = File::open(&output_path).expect("Failed to open output file");
+        let regenerated_doc =
+            Document::load_from(output_file).expect("Failed to load regenerated PDF");
+
+        let catalog = regenerated_doc.catalog();
+        assert!(
+            catalog.is_ok(),
+            "Regenerated PDF should have a valid catalog"
+        );
+
+        let catalog = catalog.unwrap();
+        let pages_ref = catalog.get(b"Pages").and_then(|p| p.as_reference());
+        assert!(
+            pages_ref.is_ok(),
+            "Catalog should reference a valid Pages object"
+        );
+
+        let pages_id = pages_ref.unwrap();
+        let pages_obj = regenerated_doc.get_object(pages_id);
+        assert!(pages_obj.is_ok(), "Should be able to get Pages object");
+
+        let pages_dict = pages_obj.unwrap().as_dict();
+        assert!(pages_dict.is_ok(), "Pages object should be a dictionary");
+
+        let pages_dict = pages_dict.unwrap();
+
+        assert!(pages_dict.has(b"Count"), "Pages object should have Count");
+        assert!(
+            pages_dict.has(b"Kids"),
+            "Pages object should have Kids array"
+        );
+
+        if let (Ok(count), Ok(kids)) = (
+            pages_dict.get(b"Count").and_then(|c| c.as_i64()),
+            pages_dict.get(b"Kids").and_then(|k| k.as_array()),
+        ) {
+            assert_eq!(
+                count as usize,
+                kids.len(),
+                "Page count should match kids array length"
+            );
+        }
+    }
+
+    #[test]
+    fn test_regenerate_pdf_temp_files_cleanup() {
+        let input = get_test_pdf_path("page-sizes-test.pdf");
+        let output_file = NamedTempFile::new().expect("Failed to create temp file");
+        let output_path = output_file.path().to_path_buf();
+
+        // Get the filename stem to predict temp file names
+        let input_filename = input.file_stem().and_then(|f| f.to_str()).unwrap();
+
+        // Look for any existing temp files before running the function
+        let current_dir = std::env::current_dir().expect("Failed to get current directory");
+        let temp_file_pattern = format!("{input_filename}_temp_file_");
+
+        let result = regenerate_pdf(&input, &output_path);
+        assert!(result.is_ok(), "Failed to regenerate PDF: {result:?}");
+
+        // After successful execution, temp files should be cleaned up
+        // Check current directory for any remaining temp files
+        if let Ok(entries) = std::fs::read_dir(&current_dir) {
+            for entry in entries.flatten() {
+                let filename = entry.file_name();
+                if let Some(name) = filename.to_str() {
+                    assert!(
+                        !name.starts_with(&temp_file_pattern),
+                        "Temp file {name} should have been cleaned up"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_regenerate_pdf_document_integrity() {
+        // Test with a PDF that should trigger batch processing
+        // This tests the chunking logic when processing multiple pages
+        let input = get_test_pdf_path("image-test.pdf");
+        let output_file = NamedTempFile::new().expect("Failed to create temp file");
+        let output_path = output_file.path().to_path_buf();
+
+        let result = regenerate_pdf(&input, &output_path);
+        assert!(
+            result.is_ok(),
+            "Failed to regenerate PDF with batch processing: {result:?}"
+        );
+
+        let output_file = File::open(&output_path).expect("Failed to open output file");
+        let output_doc = Document::load_from(output_file);
+        assert!(output_doc.is_ok(), "Batch processed PDF should be valid");
+
+        let sanitised_sample_file = get_test_pdf_path("image-test-sanitised.pdf");
+
+        let sanitised_file =
+            File::open(&sanitised_sample_file).expect("Failed to open sample file");
+        let sample_doc = Document::load_from(sanitised_file).expect("Failed to load sample PDF");
+        let sample_pages = sample_doc.get_pages();
+
+        let regenerated_doc = output_doc.unwrap();
+        let regenerated_pages = regenerated_doc.get_pages();
+
+        assert_eq!(
+            sample_pages, regenerated_pages,
+            "Batch processed PDF should pass integrity check with pre-sanitised file"
+        );
+    }
 }

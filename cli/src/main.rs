@@ -40,7 +40,7 @@ fn main() -> Result<()> {
                 .and_then(|s| s.to_str())
                 .unwrap_or("pdf");
 
-            parent_dir.join(format!("regenerated_{}.{}", file_stem, extension))
+            parent_dir.join(format!("regenerated_{file_stem}.{extension}"))
         }
     };
 
