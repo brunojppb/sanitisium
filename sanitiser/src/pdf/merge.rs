@@ -1,34 +1,41 @@
-use anyhow::{Context, Error};
 use lopdf::{Document, Object};
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::io;
 use std::path::Path;
 use std::time::Instant;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum MergePDFError {
+    #[error("Input files cannot be empty")]
+    EmptyInput,
+    #[error("Cannot open file")]
+    InvalidFile(#[from] io::Error),
+    #[error("Invalid PDF file")]
+    MalformedPDF(#[from] lopdf::Error),
+}
 
 /// Merge every file in `inputs` into a single PDF file at `output_path`.
 /// The first file becomes the "base"; all others are appended.
 ///
 /// Implementation inspired on the reference example from the [lopdf repo here.](https://github.com/J-F-Liu/lopdf/blob/c320c1d9d90028ee64e668f0bbbe9815fae3fb44/examples/merge.rs)
-pub fn merge_pdf_files<P>(files: &[P], output_path: &P) -> Result<(), Error>
+pub fn merge_pdf_files<P>(files: &[P], output_path: &P) -> Result<(), MergePDFError>
 where
     P: AsRef<Path>,
 {
     if files.is_empty() {
-        return Err(anyhow::anyhow!("No input files provided"));
+        return Err(MergePDFError::EmptyInput);
     }
 
     let start_time = Instant::now();
 
     // Start with the first document as the base
     let first_path = &files[0];
-    let first_file = File::open(first_path.as_ref()).context(format!(
-        "Could not open initial file. first_path='{:?}'",
-        first_path.as_ref().to_str()
-    ))?;
-    let mut merged_doc = Document::load_from(first_file).context(format!(
-        "Could not load PDF document. path='{:?}'",
-        first_path.as_ref().to_str()
-    ))?;
+
+    let first_file = File::open(first_path.as_ref())?;
+
+    let mut merged_doc = Document::load_from(first_file)?;
 
     if files.len() == 1 {
         // Only one file, just save it to the given output and bail
@@ -91,8 +98,7 @@ where
     let catalog = merged_doc.catalog()?;
     let pages_id = catalog
         .get(b"Pages")
-        .and_then(|pages_ref| pages_ref.as_reference())
-        .map_err(|_| anyhow::anyhow!("Could not find Pages object"))?;
+        .and_then(|pages_ref| pages_ref.as_reference())?;
 
     // Update all page objects to point to the correct parent
     for (page_id, page_obj) in all_pages.iter() {
@@ -133,6 +139,7 @@ where
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use lopdf::Document;
     use std::fs::File;
@@ -247,11 +254,7 @@ mod tests {
         let result = merge_pdf_files::<PathBuf>(&[], &output_path);
         assert!(result.is_err(), "Should return error for empty input list");
 
-        let error_message = result.unwrap_err().to_string();
-        assert!(
-            error_message.contains("No input files provided"),
-            "Error message should mention no input files, got: {error_message}"
-        );
+        assert!(matches!(result.unwrap_err(), MergePDFError::EmptyInput));
     }
 
     #[test]

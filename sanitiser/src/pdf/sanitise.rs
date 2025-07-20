@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-use anyhow::{Result, anyhow};
 use pdfium_render::prelude::*;
 use printpdf::{
     ImageOptimizationOptions, Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage,
@@ -7,16 +6,41 @@ use printpdf::{
 };
 use std::cmp::min;
 use std::fs::File;
-use std::io::{Cursor, Write};
+use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
+use thiserror::Error;
 use uuid::Uuid;
 
-use crate::pdf::merge::merge_pdf_files;
+use crate::pdf::merge::{MergePDFError, merge_pdf_files};
 
 const PAGE_BATCH: u16 = 5;
 const JPG_QUALITY: f32 = 70f32;
 const DPI: f32 = 300.0;
+
+#[derive(Error, Debug)]
+pub enum PDFRegenerationError {
+    #[error("Input must be a valid PDF file")]
+    InvalidInput,
+    #[error("Input file must contain at least one page")]
+    EmptyInput,
+    #[error(
+        "Document contains pages that are too large to be processed. Max width and height are PLACEHOLDER_HERE"
+    )]
+    PageTooLarge,
+    #[error("Could not decode image from page. decoding_error=`{0}`")]
+    BadImageDecoding(String),
+    #[error("Image rendering container cannot be empty")]
+    InvalidImageContainer,
+    #[error("Could not convert Bitmap to JPEG")]
+    InvalidBitmapToJPG(#[from] image::ImageError),
+    #[error("Cannot open file")]
+    InvalidFile(#[from] io::Error),
+    #[error("Cannot assemble final PDF")]
+    BadMerge(#[from] MergePDFError),
+    #[error("Cannot manipulate PDF")]
+    BadPDF(#[from] PdfiumError),
+}
 
 /// Regenerate the input PDF as an entire new file.
 /// By taking screenshots of each page of the input file
@@ -26,7 +50,7 @@ const DPI: f32 = 300.0;
 /// The trade-off here is that we lose the native PDF objects
 /// and JPGs embedded into the final PDF can potentially generate
 /// files that are 10x larger.
-pub fn regenerate_pdf<P>(input: &P, output_path: &P) -> Result<()>
+pub fn regenerate_pdf<P>(input: &P, output_path: &P) -> Result<(), PDFRegenerationError>
 where
     P: AsRef<Path>,
 {
@@ -36,7 +60,7 @@ where
         .as_ref()
         .file_stem()
         .and_then(|f| f.to_str())
-        .ok_or(anyhow!("Invalid input file"))?;
+        .ok_or(PDFRegenerationError::InvalidInput)?;
 
     let input_doc = pdfium.load_pdf_from_file(input, None)?;
     let pages = input_doc.pages();
@@ -44,7 +68,7 @@ where
     let input_doc_length: u16 = pages.len();
 
     if input_doc_length == 0 {
-        return Err(anyhow::anyhow!("The input PDF has no pages."));
+        return Err(PDFRegenerationError::EmptyInput);
     }
 
     // We process at most the PAGE_BATCH page count at each loop iteration.
@@ -74,9 +98,7 @@ where
         let top: u16 = local_acc + min(PAGE_BATCH, input_doc_length - local_acc);
 
         for index in local_acc..top {
-            let page = pages
-                .get(index)
-                .map_err(|e| anyhow!("Could not get page at index. {e}"))?;
+            let page = pages.get(index)?;
             // Get page size in PDF points (1 point = 1/72 in)
             // — get the true media‐box in points
             let width_pts = page.page_size().width().value; // f32
@@ -97,15 +119,14 @@ where
                         target_render_height,
                         PdfBitmapFormat::BGR,
                         pdfium.bindings(),
-                    )
-                    .expect("Could not create PDFBitmap container for rendering");
+                    )?;
                     bitmap_container = Some(new_container);
                 }
             };
 
             let mut rendering_container = bitmap_container
                 .take()
-                .ok_or(anyhow!("Bitmap container cannot be empty"))?;
+                .ok_or(PDFRegenerationError::InvalidImageContainer)?;
 
             page.render_into_bitmap_with_config(
                 &mut rendering_container,
@@ -126,9 +147,8 @@ where
             bitmap_container = Some(rendering_container);
 
             let mut warnings = Vec::new();
-            let image = RawImage::decode_from_bytes(&jpg_data, &mut warnings).map_err(|e| {
-                anyhow!("Could not decode image from bytes on page {index} error={e}")
-            })?;
+            let image = RawImage::decode_from_bytes(&jpg_data, &mut warnings)
+                .map_err(PDFRegenerationError::BadImageDecoding)?;
 
             let image_id = doc_out.add_image(&image);
 
@@ -184,8 +204,7 @@ where
         }
         Err(e) => {
             clean_up_temp_files(&temp_pdf_files);
-            eprintln!("Could not merge PDF files. error={e}");
-            Err(anyhow!("Error while merging PDF"))
+            Err(PDFRegenerationError::BadMerge(e))
         }
     }
 }
