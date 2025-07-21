@@ -231,35 +231,46 @@ fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
         SupportArch::Linux => "linux-x64",
     };
 
-    let mut lib_path = PathBuf::from("pdfium");
-    lib_path.push(lib_arch);
-    lib_path.push("lib");
+    // Make sure that resources/pdfium/<arch>/lib is available in production
+    let lib_path = std::env::current_dir().expect("Could not get the current dir path");
 
-    // During tests, go up from sanitiser/ to workspace root
-    let mut test_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    test_path.pop();
-    test_path.push("pdfium");
-    test_path.push(lib_arch);
-    test_path.push("lib");
+    let runtime_lib_path = lib_path
+        .join("resources")
+        .join("pdfium")
+        .join(lib_arch)
+        .join("lib");
+
+    // When executing this library from Cargo, we must use 
+    // resources under the crate's folder
+    let mut crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    crate_dir.pop();
+    let crate_dir = crate_dir.join("resources").join(lib_arch).join("lib");
 
     Pdfium::new(
-        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path))
-            .or_else(|_| {
-                Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&test_path))
-            })
-            .or_else(|_| Pdfium::bind_to_system_library())
-            .unwrap(),
+        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(
+            &runtime_lib_path,
+        ))
+        .or_else(|_| {
+            println!("Binding to crate dir");
+            Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&crate_dir))
+        })
+        .or_else(|_| {
+            println!("Binding to system");
+            Pdfium::bind_to_system_library()
+        })
+        .unwrap(),
     )
 }
 
-// on MacOS, we need to bind to the library at a specific path
-// given that we already include the library in the project
-// For experimentation purposes, this is fine.
+// Bind to the library at a specific path during runtime.
+// Panics if PDFium isn't available during runtime.
 #[cfg(target_os = "macos")]
 fn get_pdfium_instance() -> Pdfium {
     _get_pdfium_instance(SupportArch::MacOS)
 }
 
+// Bind to the library at a specific path during runtime.
+// Panics if PDFium isn't available during runtime.
 #[cfg(target_os = "linux")]
 fn get_pdfium_instance() -> Pdfium {
     _get_pdfium_instance(SupportArch::Linux)
@@ -283,12 +294,14 @@ mod tests {
 
     /// Helper for loading test PDF files under the `tests` directory
     fn get_test_pdf_path(filename: &str) -> PathBuf {
-        // Navigate to the workspace root and then to tests directory
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.pop(); // Go up from sanitiser/ to workspace root
-        path.push("tests");
-        path.push(filename);
-        path
+        let mut base_path =
+            std::env::current_dir().expect("Failed to determine current dir while loading config");
+
+        if base_path.ends_with("sanitiser") {
+            base_path.pop();
+        }
+
+        base_path.join("resources").join("pdfs").join(filename)
     }
 
     #[test]
