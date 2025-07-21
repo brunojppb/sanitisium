@@ -240,7 +240,7 @@ fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
         .join(lib_arch)
         .join("lib");
 
-    // When executing this library from Cargo, we must use 
+    // When executing this library from Cargo, we must use
     // resources under the crate's folder
     let mut crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     crate_dir.pop();
