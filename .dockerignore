@@ -1,0 +1,6 @@
+.git
+.github
+*.log
+/target
+README.md
+*.pdf
