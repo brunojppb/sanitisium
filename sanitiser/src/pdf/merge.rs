@@ -150,7 +150,8 @@ mod tests {
         let mut base_path =
             std::env::current_dir().expect("Failed to determine current dir while loading config");
 
-        if base_path.ends_with("sanitiser") {
+        let crate_name = env!("CARGO_CRATE_NAME");
+        if base_path.ends_with(crate_name) {
             base_path.pop();
         }
 

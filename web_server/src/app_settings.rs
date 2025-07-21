@@ -22,7 +22,8 @@ pub fn get_app_settings() -> Result<AppSettings, config::ConfigError> {
     // During integration tests, cargo invokes the binary from within the
     // crate directory, which changes the `current_dir`.
     // It's safe to pop out the crate directory from the path.
-    if base_path.ends_with("web") {
+    let crate_name = env!("CARGO_CRATE_NAME");
+    if base_path.ends_with(crate_name) {
         base_path.pop();
     }
 
