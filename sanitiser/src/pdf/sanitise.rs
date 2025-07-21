@@ -244,7 +244,11 @@ fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
     // resources under the crate's folder
     let mut crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     crate_dir.pop();
-    let crate_dir = crate_dir.join("resources").join(lib_arch).join("lib");
+    let crate_dir = crate_dir
+        .join("resources")
+        .join("pdfium")
+        .join(lib_arch)
+        .join("lib");
 
     Pdfium::new(
         Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(
