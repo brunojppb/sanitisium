@@ -2,4 +2,4 @@
 *.pdf
 *.tgz
 .DS_Store
-!/tests/*.pdf
+!/resources/pdfs/*.pdf
