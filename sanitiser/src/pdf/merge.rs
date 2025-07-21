@@ -147,12 +147,15 @@ mod tests {
     use tempfile::NamedTempFile;
 
     fn get_test_pdf_path(filename: &str) -> PathBuf {
-        // Navigate to the workspace root and then to tests directory
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.pop(); // Go up from sanitiser/ to workspace root
-        path.push("tests");
-        path.push(filename);
-        path
+        let mut base_path =
+            std::env::current_dir().expect("Failed to determine current dir while loading config");
+
+        let crate_name = env!("CARGO_CRATE_NAME");
+        if base_path.ends_with(crate_name) {
+            base_path.pop();
+        }
+
+        base_path.join("resources").join("pdfs").join(filename)
     }
 
     #[test]

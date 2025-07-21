@@ -31,13 +31,13 @@ Optionally, you can give an output file path to save the final result.
 Here is how to run it:
 
 ```shell
-cargo run -p sanitisium cli --release -- sample.pdf --output my_clean_file.pdf
+cargo run -p cli --release -- sample.pdf --output my_clean_file.pdf
 ```
 
 To check all the CLI arguments available, run with the `--help` flag:
 
 ```shell
-cargo run -p sanitisium cli --release -- --help
+cargo run -p cli --release -- --help
 # You should see the following output
 
 Tool for regenerating PDFs

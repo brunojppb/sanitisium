@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["cli", "sanitiser"]
+members = ["cli", "sanitiser", "web_server"]
 
 [workspace.dependencies]
 anyhow = "1.0.98"
