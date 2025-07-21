@@ -6,7 +6,6 @@ async fn main() -> Result<(), std::io::Error> {
 
     let app_settings = get_app_settings().expect("Could not create AppSettings");
     let app = Application::build(app_settings).await?;
-
     app.run_until_stopped().await?;
 
     Ok(())

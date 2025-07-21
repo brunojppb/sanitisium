@@ -15,12 +15,9 @@ impl Application {
             "{}:{}",
             settings.application.host, settings.application.port
         );
-
         let listener = TcpListener::bind(address)?;
         let port = listener.local_addr().unwrap().port();
-
         let server = run(listener, settings)?;
-
         Ok(Self { server, port })
     }
 
