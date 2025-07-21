@@ -1,0 +1,27 @@
+[package]
+name = "web-server"
+authors = ["Bruno Paulino <hi@bpaulino.com>"]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/brunojppb/sanitisium"
+rust-version = "1.88.0"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+path = "src/main.rs"
+name = "web-server"
+
+[dependencies]
+actix-web = "4.11.0"
+config = { version = "0.15.13", features = ["yaml"] }
+dotenv = "0.15.0"
+serde = { version = "1.0.219", features = ["derive"] }
+serde-aux = "4.7.0"
+reqwest = "0.12.22"
+tokio = { version = "1.46.1", features = ["macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+wiremock = "0.6.4"
