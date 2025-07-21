@@ -36,7 +36,7 @@ fn run(listener: TcpListener, settings: AppSettings) -> Result<Server, std::io::
         .local_addr()
         .expect("TCPListener is invalid")
         .port();
-      
+
     let settings = web::Data::new(settings);
 
     let server = HttpServer::new(move || {

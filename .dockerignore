@@ -4,3 +4,5 @@
 /target
 README.md
 *.pdf
+resources/pdfium/macOS
+resources/pdfs
