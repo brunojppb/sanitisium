@@ -8,3 +8,5 @@ rust-version = "1.88.0"
 sanitiser = { path = "../sanitiser" }
 anyhow = { workspace = true }
 clap = { version = "4.0", features = ["derive"] }
+tracing = { version = "0.1.41" }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }

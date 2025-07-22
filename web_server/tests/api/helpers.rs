@@ -1,6 +1,9 @@
+use std::sync::LazyLock;
+
 use dotenv::dotenv;
 use web_server::app_settings::get_app_settings;
 use web_server::startup::Application;
+use web_server::telemetry::{get_telemetry_subscriber, init_telemetry_subscriber};
 
 pub struct TestApp {
     /// Address where our app will be listening to HTTP requests.
@@ -15,6 +18,8 @@ pub struct TestApp {
 #[allow(clippy::let_underscore_future)]
 pub async fn spawn_app() -> TestApp {
     dotenv().ok();
+
+    LazyLock::force(&TRACING);
 
     let mut settings = get_app_settings().expect("Could not get App Settings");
     // using "0" as port will let the OS bind our test server to
@@ -32,3 +37,15 @@ pub async fn spawn_app() -> TestApp {
     let address = format!("http://127.0.0.1:{app_port}");
     TestApp { address }
 }
+
+static TRACING: LazyLock<()> = LazyLock::new(|| {
+    if std::env::var("TEST_LOG").is_ok() {
+        let subscriber =
+            get_telemetry_subscriber("sanitisium", "alpha", "dev", "info", std::io::stdout);
+        init_telemetry_subscriber(subscriber);
+    } else {
+        let subscriber =
+            get_telemetry_subscriber("sanitisium", "alpha", "dev", "info", std::io::sink);
+        init_telemetry_subscriber(subscriber);
+    };
+});

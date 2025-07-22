@@ -12,6 +12,8 @@ pdfium-render = { version = "0.8.34", features = ["image"] }
 printpdf = { version = "0.8.2", features = ["jpeg"] }
 lopdf = "0.36.0"
 thiserror = "2.0.12"
+tracing = { version = "0.1.41" }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] } 
 
 [dev-dependencies]
 tempfile = { workspace = true }
