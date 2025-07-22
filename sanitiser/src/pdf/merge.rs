@@ -1,5 +1,6 @@
 use lopdf::{Document, Object};
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::fs::File;
 use std::io;
 use std::path::Path;
@@ -20,9 +21,10 @@ pub enum MergePDFError {
 /// The first file becomes the "base"; all others are appended.
 ///
 /// Implementation inspired on the reference example from the [lopdf repo here.](https://github.com/J-F-Liu/lopdf/blob/c320c1d9d90028ee64e668f0bbbe9815fae3fb44/examples/merge.rs)
+#[tracing::instrument]
 pub fn merge_pdf_files<P>(files: &[P], output_path: &P) -> Result<(), MergePDFError>
 where
-    P: AsRef<Path>,
+    P: AsRef<Path> + Debug,
 {
     if files.is_empty() {
         return Err(MergePDFError::EmptyInput);
@@ -133,7 +135,7 @@ where
 
     // Save the merged document
     merged_doc.save(output_path.as_ref())?;
-    println!("Time taken to merge final PDF: {:?}", start_time.elapsed());
+    tracing::info!("Time taken to merge final PDF: {:?}", start_time.elapsed());
     Ok(())
 }
 

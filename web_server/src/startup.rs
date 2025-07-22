@@ -1,6 +1,7 @@
 use std::net::TcpListener;
 
-use actix_web::{App, HttpServer, dev::Server, web};
+use actix_web::{App, HttpServer, dev::Server, middleware::Logger, web};
+use actix_web_opentelemetry::RequestTracing;
 
 use crate::{app_settings::AppSettings, routes::health::health_check};
 
@@ -41,13 +42,15 @@ fn run(listener: TcpListener, settings: AppSettings) -> Result<Server, std::io::
 
     let server = HttpServer::new(move || {
         App::new()
+            .wrap(Logger::default())
+            .wrap(RequestTracing::new())
             .route("/management/health", web::get().to(health_check))
             .app_data(settings.clone())
     })
     .listen(listener)?
     .run();
 
-    println!("Sanitisium Web Server is running. port={port}");
+    tracing::info!("Sanitisium Web Server is running. port={port}");
 
     Ok(server)
 }

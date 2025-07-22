@@ -5,6 +5,7 @@ use printpdf::{
     XObjectTransform,
 };
 use std::cmp::min;
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
@@ -50,9 +51,10 @@ pub enum PDFRegenerationError {
 /// The trade-off here is that we lose the native PDF objects
 /// and JPGs embedded into the final PDF can potentially generate
 /// files that are 10x larger.
+#[tracing::instrument]
 pub fn regenerate_pdf<P>(input: &P, output_path: &P) -> Result<(), PDFRegenerationError>
 where
-    P: AsRef<Path>,
+    P: AsRef<Path> + Debug,
 {
     let pdfium = get_pdfium_instance();
 
@@ -152,7 +154,6 @@ where
 
             let image_id = doc_out.add_image(&image);
 
-            // compute page size *in mm* (printpdf::Mm expects mm)
             let width_mm = Mm(width_pts * 25.4 / 72.0);
             let height_mm = Mm(height_pts * 25.4 / 72.0);
 
@@ -161,7 +162,7 @@ where
                 transform: XObjectTransform::default(),
             }];
 
-            println!("Page {index} regenerated");
+            tracing::info!("Page {index} regenerated");
             let pdf_page = PdfPage::new(width_mm, height_mm, contents);
             pdf_pages.push(pdf_page);
         }
@@ -214,7 +215,7 @@ where
 fn clean_up_temp_files(files: &[PathBuf]) {
     files.iter().for_each(|f| {
         if let Err(e) = fs::remove_file(f) {
-            eprintln!("Could not delete temp file. error={e}")
+            tracing::error!("Could not delete temp file. error={e}");
         }
     });
 }
@@ -255,11 +256,11 @@ fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
             &runtime_lib_path,
         ))
         .or_else(|_| {
-            println!("Binding to crate dir");
+            tracing::info!("Trying to bind to crate-path directory of pdfium");
             Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&crate_dir))
         })
         .or_else(|_| {
-            println!("Binding to system");
+            tracing::info!("Trying to bind to system pdfium");
             Pdfium::bind_to_system_library()
         })
         .unwrap(),
