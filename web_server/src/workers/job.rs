@@ -1,5 +1,6 @@
 use std::error::Error;
-use std::{sync::Arc, thread::sleep, time::Duration};
+use std::path::Path;
+use std::sync::Arc;
 
 use actix_web::rt::signal;
 use anyhow::{Context, Result, anyhow};
@@ -7,6 +8,7 @@ use apalis::prelude::Error as JobError;
 use apalis::prelude::*;
 use apalis_sql::sqlite::SqliteStorage;
 use apalis_sql::sqlx::SqlitePool;
+use sanitiser::pdf::sanitise::regenerate_pdf;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing::instrument;
@@ -103,19 +105,37 @@ async fn sanitise_pdf(
 ) -> Result<(), JobError> {
     let fut = tokio::task::spawn_blocking(move || {
         tracing::info!("Processing PDF. filename={}", job.filename);
-        sleep(Duration::from_secs(5));
+        let file_to_process = Path::new(data.base_dir()).join(&job.filename);
+        let file_output = Path::new(data.base_dir()).join(format!("processed_{}", &job.filename));
+
+        match regenerate_pdf(&file_to_process, &file_output) {
+            Ok(()) => {
+                tracing::info!("File regenerated successfuly");
+            }
+            Err(error) => {
+                tracing::error!(
+                    "Failed to regenerate file. filename={} error={}",
+                    job.filename,
+                    error
+                );
+            }
+        }
+
         if let Err(error) = data.delete_file(&job.filename) {
             tracing::error!(
-                "Failed to delete file after processing. filename={} error={}",
+                "Failed to clean-up file. filename={} error={}",
                 job.filename,
                 error
             );
         }
-        tracing::info!("Processing done. filemame={}", job.filename);
+
     });
 
     match fut.await {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+          tracing::info!("Worker done");
+          Ok(())
+        },
         Err(e) => {
             tracing::error!("Processing failed. error={e}");
             Err(JobError::Failed(Arc::new(Box::new(

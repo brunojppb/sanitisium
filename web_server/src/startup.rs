@@ -9,6 +9,7 @@ use actix_web::{
 use actix_web_opentelemetry::RequestTracing;
 use anyhow::Result;
 use futures::future;
+use tracing_actix_web::TracingLogger;
 
 use crate::{
     app_settings::AppSettings,
@@ -96,7 +97,8 @@ async fn run(listener: TcpListener, settings: AppSettings) -> Result<(Server, Ar
     let server = HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
-            .wrap(RequestTracing::new())
+            .wrap(TracingLogger::default())
+            .wrap(RequestTracing::default())
             .route("/management/health", web::get().to(health_check))
             .route("/sanitise/pdf", web::post().to(enqueue_pdf))
             .app_data(data_arc_services.clone())
