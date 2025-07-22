@@ -50,7 +50,7 @@ where
         .with_http_client(reqwest::Client::new())
         .with_protocol(opentelemetry_otlp::Protocol::HttpJson)
         .build()
-        .expect("Could not create tracer");
+        .expect("Could not create SpanExporter");
 
     let batch_processor = span_processor_with_async_runtime::BatchSpanProcessor::builder(
         span_exporter,
@@ -64,7 +64,7 @@ where
         .with_http_client(reqwest::Client::new())
         .with_protocol(opentelemetry_otlp::Protocol::HttpJson)
         .build()
-        .expect("could not create Metrics exporter");
+        .expect("could not create MetricExporter");
 
     let periodic_reader = periodic_reader_with_async_runtime::PeriodicReader::builder(
         metrics_exporter,
