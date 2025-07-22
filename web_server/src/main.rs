@@ -1,3 +1,4 @@
+use anyhow::Result;
 use web_server::{
     app_settings::get_app_settings,
     startup::Application,
@@ -5,7 +6,7 @@ use web_server::{
 };
 
 #[tokio::main]
-async fn main() -> Result<(), std::io::Error> {
+async fn main() -> Result<()> {
     dotenv::dotenv().ok();
 
     // Init telemetry subscriber to process tracing spans and logs
