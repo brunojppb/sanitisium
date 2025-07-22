@@ -5759,6 +5759,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde-aux",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-appender",

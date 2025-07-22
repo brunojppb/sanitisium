@@ -6,11 +6,20 @@ use serde_aux::field_attributes::deserialize_number_from_string;
 #[derive(Clone, Deserialize)]
 pub struct AppSettings {
     pub application: WebServerConfig,
+    pub sanitisation: SanitisationConfig,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct SanitisationConfig {
+    /// Base directory to store PDF files for processing sanitisation requests
+    pub pdfs_dir: String,
 }
 
 #[derive(Clone, Deserialize)]
 pub struct WebServerConfig {
+    /// Host where to bind the web server
     pub host: String,
+    /// Port to bind the web server to and listen for requests
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
 }

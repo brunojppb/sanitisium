@@ -1,4 +1,4 @@
-use std::net::TcpListener;
+use std::{fs, net::TcpListener};
 
 use actix_web::{App, HttpServer, dev::Server, middleware::Logger, rt::signal, web};
 use actix_web_opentelemetry::RequestTracing;
@@ -14,6 +14,7 @@ use crate::{
     app_settings::AppSettings,
     job::{SanitisePDF, sanitise_pdf},
     routes::{health::health_check, sanitise::enqueue_pdf},
+    storage::FileStorage,
 };
 
 pub struct Application {
@@ -55,6 +56,22 @@ async fn run(listener: TcpListener, settings: AppSettings) -> Result<(Server, Mo
         .expect("TCPListener is invalid")
         .port();
 
+    // Make sure the file sanitisation directory exists
+    match fs::exists(&settings.sanitisation.pdfs_dir) {
+        Ok(false) => fs::create_dir(&settings.sanitisation.pdfs_dir)
+            .expect("Error while creating base dir for file sanitisation"),
+        Ok(true) => {}
+        Err(error) => {
+            let message =
+                format!("Could not create file sanitisation base directory. error={error}");
+            tracing::error!(message);
+            panic!("Cannot startup the server. error={message}");
+        }
+    };
+
+    let file_storage = FileStorage::new(settings.sanitisation.pdfs_dir.clone());
+    let file_storage = web::Data::new(file_storage);
+
     let settings = web::Data::new(settings);
 
     let pool = SqlitePool::connect("sqlite::memory:")
@@ -75,6 +92,7 @@ async fn run(listener: TcpListener, settings: AppSettings) -> Result<(Server, Mo
             .route("/sanitise/pdf", web::post().to(enqueue_pdf))
             .app_data(settings.clone())
             .app_data(arc_storage.clone())
+            .app_data(file_storage.clone())
     })
     .listen(listener)?
     .run();
