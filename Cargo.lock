@@ -5757,6 +5757,7 @@ dependencies = [
  "opentelemetry-semantic-conventions 0.30.0",
  "opentelemetry_sdk",
  "reqwest",
+ "sanitiser",
  "serde",
  "serde-aux",
  "tempfile",
@@ -5767,6 +5768,7 @@ dependencies = [
  "tracing-log 0.2.0",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "uuid",
  "wiremock",
 ]
 

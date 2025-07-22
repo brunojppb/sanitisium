@@ -3,12 +3,13 @@ use std::io::{self, Write};
 use std::path::Path;
 
 /// A file storage service that provides functionality to store and retrieve files
-pub struct FileStorage {
+#[derive(Debug)]
+pub struct FileStorage<P: AsRef<Path>> {
     /// Base directory where files will be stored
-    base_dir: String,
+    base_dir: P,
 }
 
-impl FileStorage {
+impl<P: AsRef<Path>> FileStorage<P> {
     /// Creates a new FileStorage instance with the specified base directory
     ///
     /// # Arguments
@@ -16,7 +17,7 @@ impl FileStorage {
     ///
     /// # Returns
     /// A new FileStorage instance
-    pub fn new(base_dir: String) -> Self {
+    pub fn new(base_dir: P) -> Self {
         Self { base_dir }
     }
 
@@ -31,17 +32,14 @@ impl FileStorage {
     ///
     /// # Examples
     /// ```
-    /// use std::path::Path;
+    /// use web_server::storage::FileStorage;
     ///
     /// let storage = FileStorage::new("./storage".to_string());
     /// let data = b"Hello, World!";
-    /// storage.store_file(&Path::new("test.txt"), data).unwrap();
+    /// storage.store_file(&"test.txt".into(), data).unwrap();
     /// ```
-    pub fn store_file<P>(&self, path: &P, data: &[u8]) -> Result<(), io::Error>
-    where
-        P: AsRef<Path>,
-    {
-        let full_path = Path::new(&self.base_dir).join(path.as_ref());
+    pub fn store_file(&self, path: &P, data: &[u8]) -> Result<(), io::Error> {
+        let full_path = &self.base_dir.as_ref().join(path.as_ref());
 
         // Create parent directories if they don't exist
         if let Some(parent) = full_path.parent() {
@@ -66,18 +64,15 @@ impl FileStorage {
     ///
     /// # Examples
     /// ```
-    /// use std::path::Path;
+    /// use web_server::storage::FileStorage;
     ///
     /// let storage = FileStorage::new("./storage".to_string());
-    /// if let Some(file) = storage.get_file(&Path::new("test.txt")) {
+    /// if let Some(file) = storage.get_file(&"test.txt".into()) {
     ///     // File exists, you can read from it
     /// }
     /// ```
-    pub fn get_file<P>(&self, path: &P) -> Option<File>
-    where
-        P: AsRef<Path>,
-    {
-        let full_path = Path::new(&self.base_dir).join(path.as_ref());
+    pub fn get_file(&self, path: &P) -> Option<File> {
+        let full_path = &self.base_dir.as_ref().join(path.as_ref());
 
         // Check if file exists and try to open it
         if full_path.exists() && full_path.is_file() {
@@ -94,11 +89,8 @@ impl FileStorage {
     ///
     /// # Returns
     /// `true` if the file exists, `false` otherwise
-    pub fn file_exists<P>(&self, path: &P) -> bool
-    where
-        P: AsRef<Path>,
-    {
-        let full_path = Path::new(&self.base_dir).join(path.as_ref());
+    pub fn file_exists(&self, path: &P) -> bool {
+        let full_path = &self.base_dir.as_ref().join(path.as_ref());
         full_path.exists() && full_path.is_file()
     }
 
@@ -109,24 +101,17 @@ impl FileStorage {
     ///
     /// # Returns
     /// `Ok(())` if the file was deleted successfully, otherwise an `io::Error`
-    pub fn delete_file<P>(&self, path: &P) -> Result<(), io::Error>
-    where
-        P: AsRef<Path>,
-    {
-        let full_path = Path::new(&self.base_dir).join(path.as_ref());
+    pub fn delete_file(&self, path: &P) -> Result<(), io::Error> {
+        let full_path = &self.base_dir.as_ref().join(path.as_ref());
         fs::remove_file(full_path)
     }
 
     /// Gets the base directory of this storage instance
     pub fn base_dir(&self) -> &str {
-        &self.base_dir
-    }
-}
-
-impl Default for FileStorage {
-    /// Creates a default FileStorage instance with "./storage" as the base directory
-    fn default() -> Self {
-        Self::new("./storage".to_string())
+        self.base_dir
+            .as_ref()
+            .to_str()
+            .expect("base_dir should be a valid string")
     }
 }
 
@@ -145,10 +130,10 @@ mod tests {
         let test_path = "test.txt";
 
         // Store the file
-        storage.store_file(&test_path, test_data).unwrap();
+        storage.store_file(&test_path.into(), test_data).unwrap();
 
         // Retrieve the file
-        let mut file = storage.get_file(&test_path).unwrap();
+        let mut file = storage.get_file(&test_path.into()).unwrap();
         let mut contents = Vec::new();
         file.read_to_end(&mut contents).unwrap();
 
@@ -160,7 +145,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let storage = FileStorage::new(temp_dir.path().to_string_lossy().to_string());
 
-        let result = storage.get_file(&"nonexistent.txt");
+        let result = storage.get_file(&"nonexistent.txt".into());
         assert!(result.is_none());
     }
 
@@ -172,10 +157,10 @@ mod tests {
         let test_data = b"Test data";
         let test_path = "exists_test.txt";
 
-        assert!(!storage.file_exists(&test_path));
+        assert!(!storage.file_exists(&test_path.into()));
 
-        storage.store_file(&test_path, test_data).unwrap();
-        assert!(storage.file_exists(&test_path));
+        storage.store_file(&test_path.into(), test_data).unwrap();
+        assert!(storage.file_exists(&test_path.into()));
     }
 
     #[test]
@@ -186,9 +171,9 @@ mod tests {
         let test_data = b"Nested file content";
         let test_path = "nested/directory/test.txt";
 
-        storage.store_file(&test_path, test_data).unwrap();
+        storage.store_file(&test_path.into(), test_data).unwrap();
 
-        let mut file = storage.get_file(&test_path).unwrap();
+        let mut file = storage.get_file(&test_path.into()).unwrap();
         let mut contents = Vec::new();
         file.read_to_end(&mut contents).unwrap();
 
@@ -203,10 +188,10 @@ mod tests {
         let test_data = b"To be deleted";
         let test_path = "delete_me.txt";
 
-        storage.store_file(&test_path, test_data).unwrap();
-        assert!(storage.file_exists(&test_path));
+        storage.store_file(&test_path.into(), test_data).unwrap();
+        assert!(storage.file_exists(&test_path.into()));
 
-        storage.delete_file(&test_path).unwrap();
-        assert!(!storage.file_exists(&test_path));
+        storage.delete_file(&test_path.into()).unwrap();
+        assert!(!storage.file_exists(&test_path.into()));
     }
 }
