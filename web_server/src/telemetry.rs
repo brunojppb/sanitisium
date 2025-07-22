@@ -117,6 +117,6 @@ fn get_resource(service_name: &str, version: &str, env_name: &str) -> Resource {
 /// default telemetry subscriber. The subscriber will handle log and tracing
 /// events based on the pre-configured layers.
 pub fn init_telemetry_subscriber(subscriber: impl Subscriber + Send + Sync) {
-    LogTracer::init().expect("Could not set logger");
+    LogTracer::init().expect("Could not set LogTracer as global logger");
     set_global_default(subscriber).expect("Failed to set subscriber");
 }
