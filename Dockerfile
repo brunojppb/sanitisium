@@ -21,6 +21,10 @@ FROM scratch
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/web-server /usr/bin/web-server
 COPY --from=builder /app/resources /resources
 
+# Default directory for storing processing files
+# Can be changed with environment variables
+RUN mkdir ./stored_files
+
 ENV APP_APPLICATION__HOST="0.0.0.0"
 
 CMD  ["/usr/bin/web-server"]
