@@ -119,7 +119,7 @@ where
                     let new_container = PdfBitmap::empty(
                         target_render_width,
                         target_render_height,
-                        PdfBitmapFormat::BGRA,
+                        PdfBitmapFormat::BGR,
                         pdfium.bindings(),
                     )?;
                     bitmap_container = Some(new_container);
@@ -135,11 +135,11 @@ where
                 &PdfRenderConfig::new()
                     .set_target_width(target_render_width)
                     .set_target_height(target_render_height)
-                    .set_format(PdfBitmapFormat::BGRA),
+                    .set_format(PdfBitmapFormat::BGR),
             )?;
 
             // Rasterize the page at the new higher resolution
-            let bitmap = rendering_container.as_image().to_rgba8();
+            let bitmap = rendering_container.as_image().to_rgb8();
             let mut png_data = Vec::new();
 
             bitmap.write_to(&mut Cursor::new(&mut png_data), image::ImageFormat::Png)?;
