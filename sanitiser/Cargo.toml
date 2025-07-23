@@ -9,7 +9,7 @@ uuid = { workspace = true }
 image = "0.25.6"
 # Using PDF libraries from: https://github.com/bblanchon/pdfium-binaries
 pdfium-render = { version = "0.8.34", features = ["image"] }
-printpdf = { version = "0.8.2", features = ["jpeg"] }
+printpdf = { version = "0.8.2", features = ["png"] }
 lopdf = "0.36.0"
 thiserror = "2.0.12"
 tracing = { version = "0.1.41" }

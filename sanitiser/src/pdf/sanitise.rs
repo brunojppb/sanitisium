@@ -119,7 +119,7 @@ where
                     let new_container = PdfBitmap::empty(
                         target_render_width,
                         target_render_height,
-                        PdfBitmapFormat::BGR,
+                        PdfBitmapFormat::BGRA,
                         pdfium.bindings(),
                     )?;
                     bitmap_container = Some(new_container);
@@ -135,21 +135,21 @@ where
                 &PdfRenderConfig::new()
                     .set_target_width(target_render_width)
                     .set_target_height(target_render_height)
-                    .set_format(PdfBitmapFormat::BGR),
+                    .set_format(PdfBitmapFormat::BGRA),
             )?;
 
             // Rasterize the page at the new higher resolution
-            let bitmap = rendering_container.as_image().to_rgb8();
-            let mut jpg_data = Vec::new();
+            let bitmap = rendering_container.as_image().to_rgba8();
+            let mut png_data = Vec::new();
 
-            bitmap.write_to(&mut Cursor::new(&mut jpg_data), image::ImageFormat::Jpeg)?;
+            bitmap.write_to(&mut Cursor::new(&mut png_data), image::ImageFormat::Png)?;
             // Put back the reusable rendering container
             // So we can reference it again on the next loop run
             // preventing allocating another buffer
             bitmap_container = Some(rendering_container);
 
             let mut warnings = Vec::new();
-            let image = RawImage::decode_from_bytes(&jpg_data, &mut warnings)
+            let image = RawImage::decode_from_bytes(&png_data, &mut warnings)
                 .map_err(PDFRegenerationError::BadImageDecoding)?;
 
             let image_id = doc_out.add_image(&image);
