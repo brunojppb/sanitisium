@@ -3,3 +3,4 @@
 *.tgz
 .DS_Store
 !/resources/pdfs/*.pdf
+stored_files

@@ -8,6 +8,7 @@ use web_server::{
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv::dotenv().ok();
+    procspawn::init();
 
     // Init telemetry subscriber to process tracing spans and logs
     // TODO: Read these values from environment variables instead.

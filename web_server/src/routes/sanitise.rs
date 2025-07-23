@@ -1,15 +1,30 @@
-use actix_web::{HttpResponse, Responder, web};
-use apalis::prelude::*;
-use apalis_sql::sqlite::SqliteStorage;
+use std::sync::Arc;
+
+use actix_web::{
+    HttpRequest, HttpResponse, Responder,
+    web::{self, Bytes},
+};
 use tracing::instrument;
 
-use crate::job::SanitisePDF;
+use crate::{startup::AppServices, workers::job::SanitisePDFRequest};
 
-#[instrument]
-pub async fn enqueue_pdf(worker_storage: web::Data<SqliteStorage<SanitisePDF>>) -> impl Responder {
-    let storage = &*worker_storage.into_inner();
-    let mut storage = storage.clone();
-    match storage.push(SanitisePDF::new("test-fake-pdf".into())).await {
+#[instrument(skip(_req, body, services))]
+pub async fn enqueue_pdf(
+    _req: HttpRequest,
+    body: Bytes,
+    services: web::Data<Arc<AppServices>>,
+) -> impl Responder {
+    let filename = format!("{}.pdf", uuid::Uuid::new_v4());
+    if let Err(error) = &services.file_storage.store_file(&filename, &body) {
+        tracing::info!("Could not store PDF file. filename={filename} error={error}");
+        return HttpResponse::BadRequest().body("Error while storing PDF file");
+    }
+
+    match services
+        .job_scheduler
+        .enqueue(SanitisePDFRequest::new(filename))
+        .await
+    {
         Ok(_) => HttpResponse::Ok().body("PDF added to queue for processing"),
         Err(e) => {
             tracing::error!("Could not enqueue PDF job. error={e}");
