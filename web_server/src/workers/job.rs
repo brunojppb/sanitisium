@@ -119,6 +119,20 @@ async fn sanitise_pdf(
             output_file: output_file.to_str().unwrap().into(),
         };
 
+        // The C++ PDF handling library we use isn't thread-safe,
+        // So the Rust wrapper (pdfium-render) puts a mutex behind the
+        // C++ bindings to avoid segfaulting.
+        // This means that running PDFium in multiple threads won't help
+        // us to process multiple files at once.
+        //
+        // PDFium works better with its own deficated process.
+        // That way, it won't be able to access shared memory.
+        //
+        // By using procspawn, we are able to fork a child process
+        // and use PDFium isolated for each task.
+        //
+        // This is probably more costly, but we can improve this later
+        // with a process pool that can be reused across tasks.
         let proc_handle = procspawn::spawn(args, |args| {
             match regenerate_pdf(&args.original_file, &args.output_file) {
                 Ok(()) => {
