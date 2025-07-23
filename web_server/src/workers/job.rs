@@ -98,28 +98,51 @@ impl SanitisePdfScheduler {
     }
 }
 
-#[instrument]
+#[derive(Debug, Serialize, Deserialize)]
+struct ProcData {
+    original_file: String,
+    output_file: String,
+}
+
+#[instrument(skip(data))]
 async fn sanitise_pdf(
     job: SanitisePDFRequest,
     data: apalis::prelude::Data<Arc<FileStorage<String>>>,
 ) -> Result<(), JobError> {
     let fut = tokio::task::spawn_blocking(move || {
         tracing::info!("Processing PDF. filename={}", job.filename);
-        let file_to_process = Path::new(data.base_dir()).join(&job.filename);
-        let file_output = Path::new(data.base_dir()).join(format!("processed_{}", &job.filename));
+        let original_file = Path::new(data.base_dir()).join(&job.filename);
+        let output_file = Path::new(data.base_dir()).join(format!("processed_{}", &job.filename));
 
-        match regenerate_pdf(&file_to_process, &file_output) {
-            Ok(()) => {
-                tracing::info!("File regenerated successfuly");
+        let args = ProcData {
+            original_file: original_file.to_str().unwrap().into(),
+            output_file: output_file.to_str().unwrap().into(),
+        };
+
+        let proc_handle = procspawn::spawn(args, |args| {
+            match regenerate_pdf(&args.original_file, &args.output_file) {
+                Ok(()) => {
+                    tracing::info!("File regenerated successfuly");
+                    None
+                }
+                Err(error) => Some(format!(
+                    "Failed to regenerate file. filename={} error={}",
+                    args.original_file, error
+                )),
+            }
+        });
+
+        match proc_handle.join() {
+            Ok(Some(error_msg)) => {
+                tracing::error!("Failed to sanitise PDF in a background process. error={error_msg}")
+            }
+            Ok(None) => {
+                tracing::info!("Background process done");
             }
             Err(error) => {
-                tracing::error!(
-                    "Failed to regenerate file. filename={} error={}",
-                    job.filename,
-                    error
-                );
+                tracing::error!("To spawn background process. error={}", error);
             }
-        }
+        };
 
         if let Err(error) = data.delete_file(&job.filename) {
             tracing::error!(
@@ -128,14 +151,13 @@ async fn sanitise_pdf(
                 error
             );
         }
-
     });
 
     match fut.await {
         Ok(()) => {
-          tracing::info!("Worker done");
-          Ok(())
-        },
+            tracing::info!("Worker done");
+            Ok(())
+        }
         Err(e) => {
             tracing::error!("Processing failed. error={e}");
             Err(JobError::Failed(Arc::new(Box::new(
