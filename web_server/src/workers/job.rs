@@ -8,6 +8,7 @@ use apalis::prelude::Error as JobError;
 use apalis::prelude::*;
 use apalis_sql::sqlite::SqliteStorage;
 use apalis_sql::sqlx::SqlitePool;
+use procspawn::Pool;
 use sanitiser::pdf::sanitise::regenerate_pdf;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -46,6 +47,12 @@ pub struct SanitisePdfScheduler {
     monitor: Mutex<Option<Monitor>>,
 }
 
+#[derive(Debug)]
+pub struct WorkerData {
+    storage: FileStorage<String>,
+    pool: Pool,
+}
+
 impl SanitisePdfScheduler {
     pub async fn build(settings: AppSettings) -> Result<Self> {
         let pool = SqlitePool::connect("sqlite::memory:")
@@ -59,12 +66,16 @@ impl SanitisePdfScheduler {
         let mutex_storage = Mutex::new(storage.clone());
 
         let file_storage = FileStorage::new(settings.sanitisation.pdfs_dir);
-        let file_storage = Arc::new(file_storage);
+        let pool = Pool::new(10).expect("Could not create pool of background processes");
+        let worker_data = Arc::new(WorkerData {
+            storage: file_storage,
+            pool,
+        });
 
         let monitor = Monitor::new().register({
             WorkerBuilder::new("pdf-regenerator")
                 .enable_tracing()
-                .data(file_storage)
+                .data(worker_data)
                 .concurrency(10)
                 .backend(storage)
                 .build_fn(sanitise_pdf)
@@ -107,12 +118,13 @@ struct ProcData {
 #[instrument(skip(data))]
 async fn sanitise_pdf(
     job: SanitisePDFRequest,
-    data: apalis::prelude::Data<Arc<FileStorage<String>>>,
+    data: apalis::prelude::Data<Arc<WorkerData>>,
 ) -> Result<(), JobError> {
     let fut = tokio::task::spawn_blocking(move || {
         tracing::info!("Processing PDF. filename={}", job.filename);
-        let original_file = Path::new(data.base_dir()).join(&job.filename);
-        let output_file = Path::new(data.base_dir()).join(format!("processed_{}", &job.filename));
+        let original_file = Path::new(data.storage.base_dir()).join(&job.filename);
+        let output_file =
+            Path::new(data.storage.base_dir()).join(format!("processed_{}", &job.filename));
 
         let args = ProcData {
             original_file: original_file.to_str().unwrap().into(),
@@ -133,7 +145,7 @@ async fn sanitise_pdf(
         //
         // This is probably more costly, but we can improve this later
         // with a process pool that can be reused across tasks.
-        let proc_handle = procspawn::spawn(args, |args| {
+        let proc_handle = procspawn::spawn!(in data.pool, (args) || {
             match regenerate_pdf(&args.original_file, &args.output_file) {
                 Ok(()) => {
                     tracing::info!("File regenerated successfuly");
@@ -158,7 +170,7 @@ async fn sanitise_pdf(
             }
         };
 
-        if let Err(error) = data.delete_file(&job.filename) {
+        if let Err(error) = data.storage.delete_file(&job.filename) {
             tracing::error!(
                 "Failed to clean-up file. filename={} error={}",
                 job.filename,

@@ -3609,6 +3609,7 @@ dependencies = [
  "ipc-channel",
  "libc",
  "serde",
+ "small_ctor",
  "windows-sys 0.48.0",
 ]
 
@@ -4458,6 +4459,12 @@ checksum = "dbff4acf519f630b3a3ddcfaea6c06b42174d9a44bc70c620e9ed1649d58b82a"
 dependencies = [
  "version_check",
 ]
+
+[[package]]
+name = "small_ctor"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88414a5ca1f85d82cc34471e975f0f74f6aa54c40f062efa42c0080e7f763f81"
 
 [[package]]
 name = "smallvec"
