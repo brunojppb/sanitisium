@@ -107,7 +107,12 @@ async fn run(listener: TcpListener, settings: AppSettings) -> Result<(Server, Ar
     .listen(listener)?
     .run();
 
-    tracing::info!("Sanitisium Web Server is running. port={port}");
+    tracing::info!(
+        "Sanitisium Web Server is running. Runtime OS={} arch={} port={}",
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        port
+    );
 
     Ok((server, arc_services))
 }
