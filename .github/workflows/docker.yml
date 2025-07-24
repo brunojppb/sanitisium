@@ -40,3 +40,17 @@ jobs:
           IMAGE_VERSION: ${{ github.event.inputs.semver }}
         run: |
           docker buildx build --tag brunojppb/sanitisium:$IMAGE_VERSION --platform linux/arm64,linux/amd64 --push .
+
+      - name: login to Github Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # There is bug in docker buildx that the recently tagged image isn't stored locally
+      - name: Build Docker image for Github
+        env:
+          IMAGE_VERSION: ${{ github.event.inputs.semver }}
+        run: |
+          docker buildx build --tag ghcr.io/brunojppb/sanitisium:$IMAGE_VERSION --platform linux/arm64,linux/amd64 --push .
