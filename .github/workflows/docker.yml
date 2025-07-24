@@ -39,7 +39,4 @@ jobs:
         env:
           IMAGE_VERSION: ${{ github.event.inputs.semver }}
         run: |
-          docker buildx build \
-            --platform linux/arm64,linux/amd64 \ 
-            --tag brunojppb/sanitisium:$IMAGE_VERSION
-            --push .
+          docker buildx build --tag brunojppb/sanitisium:$IMAGE_VERSION --platform linux/arm64,linux/amd64 --push .
