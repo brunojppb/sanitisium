@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use pdfium_render::prelude::*;
 use printpdf::{
     ImageOptimizationOptions, Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage,
@@ -13,6 +12,7 @@ use std::{env, fs};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::pdf::load_pdfium::get_pdfium_instance;
 use crate::pdf::merge::{MergePDFError, merge_pdf_files};
 
 const PAGE_BATCH: u16 = 5;
@@ -218,75 +218,6 @@ fn clean_up_temp_files(files: &[PathBuf]) {
             tracing::error!("Could not delete temp file. error={e}");
         }
     });
-}
-
-// For the sake of simplicity, we only Support Mac (ARM64) and Linux (AMD 64-bit)
-enum SupportArch {
-    MacOS,
-    Linux,
-}
-
-fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
-    let lib_arch = match arch {
-        SupportArch::MacOS => "macOS",
-        SupportArch::Linux => "linux-x64",
-    };
-
-    // Make sure that resources/pdfium/<arch>/lib is available in production
-    let lib_path = std::env::current_dir().expect("Could not get the current dir path");
-
-    let runtime_lib_path = lib_path
-        .join("resources")
-        .join("pdfium")
-        .join(lib_arch)
-        .join("lib");
-
-    // When executing this library from Cargo, we must use
-    // resources under the crate's folder
-    let mut crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    crate_dir.pop();
-    let crate_dir = crate_dir
-        .join("resources")
-        .join("pdfium")
-        .join(lib_arch)
-        .join("lib");
-
-    Pdfium::new(
-        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(
-            &runtime_lib_path,
-        ))
-        .or_else(|_| {
-            tracing::info!("Trying to bind to crate-path directory of pdfium");
-            Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&crate_dir))
-        })
-        .or_else(|_| {
-            tracing::info!("Trying to bind to system pdfium");
-            Pdfium::bind_to_system_library()
-        })
-        .unwrap(),
-    )
-}
-
-// Bind to the library at a specific path during runtime.
-// Panics if PDFium isn't available during runtime.
-#[cfg(target_os = "macos")]
-fn get_pdfium_instance() -> Pdfium {
-    _get_pdfium_instance(SupportArch::MacOS)
-}
-
-// Bind to the library at a specific path during runtime.
-// Panics if PDFium isn't available during runtime.
-#[cfg(target_os = "linux")]
-fn get_pdfium_instance() -> Pdfium {
-    _get_pdfium_instance(SupportArch::Linux)
-}
-
-// On other platforms, we can try to use the system library directly.
-// It will panic in case PDFium isn't installed.
-// Sorry Windows folks...
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn get_pdfium_instance() -> Pdfium {
-    Pdfium::new(Pdfium::bind_to_system_library())
 }
 
 #[cfg(test)]

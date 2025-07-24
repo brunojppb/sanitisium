@@ -107,6 +107,16 @@ async fn run(listener: TcpListener, settings: AppSettings) -> Result<(Server, Ar
     .listen(listener)?
     .run();
 
+    if cfg!(target_os = "macos") {
+        tracing::info!("Running on a MacOS");
+    }
+
+    if cfg!(target_os = "linux") && cfg!(target_arch = "arm") {
+        tracing::info!("Running on a Linux arm64");
+    } else {
+      tracing::info!("Running on a Linux amd64");
+    }
+    
     tracing::info!("Sanitisium Web Server is running. port={port}");
 
     Ok((server, arc_services))
