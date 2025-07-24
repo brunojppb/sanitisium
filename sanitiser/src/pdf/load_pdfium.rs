@@ -35,6 +35,8 @@ fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
         .join(lib_arch)
         .join("lib");
 
+    tracing::info!("Dynamic PDFium from '{runtime_lib_path:#?}'");
+
     Pdfium::new(
         Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(
             &runtime_lib_path,
@@ -54,11 +56,12 @@ fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
 /// Bind to the library at a specific path during runtime.
 /// Panics if PDFium isn't available during runtime.
 pub fn get_pdfium_instance() -> Pdfium {
+    // We don't care about Intel Macs anymore...
     if cfg!(target_os = "macos") {
         return _get_pdfium_instance(SupportArch::MacOSARM);
     }
 
-    if cfg!(target_os = "linux") && cfg!(target_arch = "arm") {
+    if cfg!(target_os = "linux") && cfg!(target_arch = "aarch64") {
         return _get_pdfium_instance(SupportArch::LinuxARM64);
     }
 
