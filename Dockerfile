@@ -24,7 +24,6 @@ RUN set -eux; \
   tar -C /opt -xf /tmp/zig.tar.xz; \
   ln -s /opt/zig-linux-${ZARCH}-${ZIG_VERSION}/zig /usr/local/bin/zig; \
   rm /tmp/zig.tar.xz
-# ----------------------------------------------------------------------
 
 RUN cargo install --locked cargo-chef cargo-zigbuild
 RUN rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
@@ -45,8 +44,8 @@ RUN cargo zigbuild --release \
   --target x86_64-unknown-linux-gnu \
   --target aarch64-unknown-linux-gnu && \
   mkdir -p /app/linux/amd64 /app/linux/arm64 && \
-  cp target/x86_64-unknown-linux-gnu/release/cli /app/linux/amd64/ && \
-  cp target/aarch64-unknown-linux-gnu/release/cli /app/linux/arm64/
+  cp target/x86_64-unknown-linux-gnu/release/web-server /app/linux/amd64/ && \
+  cp target/aarch64-unknown-linux-gnu/release/web-server /app/linux/arm64/
 
 
 FROM debian:bookworm-slim AS runtime
@@ -58,9 +57,9 @@ RUN apt-get update && \
   apt-get install -y --no-install-recommends ca-certificates && \
   rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/${TARGETPLATFORM}/cli /usr/bin/cli
+COPY --from=builder /app/${TARGETPLATFORM}/web-server /usr/bin/web-server
 COPY --from=builder /app/resources /app/resources
 
 ENV APP_APPLICATION__HOST="0.0.0.0"
 
-CMD  ["/usr/bin/cli"]
+CMD  ["/usr/bin/web-server"]
