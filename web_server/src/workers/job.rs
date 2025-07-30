@@ -187,7 +187,7 @@ async fn sanitise_pdf(
                 Ok(output_file)
             }
             Err(error) => {
-                let error_msg = format!("Failed to spawn background process. error={}", error);
+                let error_msg = format!("Failed to spawn background process. error={error}");
                 tracing::error!("{}", error_msg);
                 Err(error_msg)
             }
