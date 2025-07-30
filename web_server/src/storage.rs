@@ -103,6 +103,7 @@ impl<P: AsRef<Path>> FileStorage<P> {
     /// `Ok(())` if the file was deleted successfully, otherwise an `io::Error`
     pub fn delete_file(&self, path: &P) -> Result<(), io::Error> {
         let full_path = &self.base_dir.as_ref().join(path.as_ref());
+        tracing::info!("Deleting file. filename={}", full_path.display());
         fs::remove_file(full_path)
     }
 

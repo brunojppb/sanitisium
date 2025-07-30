@@ -3,11 +3,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use actix_web::rt::signal;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use apalis::prelude::Error as JobError;
 use apalis::prelude::*;
-use apalis_sql::sqlite::SqliteStorage;
-use apalis_sql::sqlx::SqlitePool;
 use procspawn::Pool;
 use sanitiser::pdf::sanitise::regenerate_pdf;
 use serde::{Deserialize, Serialize};
@@ -57,7 +55,7 @@ impl std::fmt::Display for BackgroundJobError {
 
 #[derive(Debug)]
 pub struct SanitisePdfScheduler {
-    storage: Mutex<SqliteStorage<SanitisePDFRequest>>,
+    storage: Mutex<MemoryStorage<SanitisePDFRequest>>,
     monitor: Mutex<Option<Monitor>>,
 }
 
@@ -69,14 +67,7 @@ pub struct WorkerData {
 
 impl SanitisePdfScheduler {
     pub async fn build(settings: AppSettings) -> Result<Self> {
-        let pool = SqlitePool::connect("sqlite::memory:")
-            .await
-            .with_context(|| "Could not connect to SQLite in-memory")
-            .unwrap();
-        SqliteStorage::setup(&pool)
-            .await
-            .expect("Could not run sqlite migrations");
-        let storage: SqliteStorage<SanitisePDFRequest> = SqliteStorage::new(pool);
+        let storage: MemoryStorage<SanitisePDFRequest> = MemoryStorage::new();
         let mutex_storage = Mutex::new(storage.clone());
 
         let file_storage = FileStorage::new(settings.sanitisation.pdfs_dir);
@@ -105,9 +96,9 @@ impl SanitisePdfScheduler {
     pub async fn enqueue(&self, job: SanitisePDFRequest) -> Result<()> {
         let mut guard = self.storage.lock().await;
         guard
-            .push(job.clone())
+            .enqueue(job)
             .await
-            .map_err(|e| anyhow!("Could not enqueue job for processing. job={job:#?} error={e}"))?;
+            .map_err(|_| anyhow::anyhow!("Failed to enqueue job"))?;
 
         Ok(())
     }
@@ -196,7 +187,7 @@ async fn sanitise_pdf(
 
         if let Err(error) = inner_data.storage.delete_file(&inner_job.filename) {
             tracing::error!(
-                "Failed to clean-up file. filename={} error={}",
+                "Failed to clean-up original file. filename={} error={}",
                 inner_job.filename,
                 error
             );
@@ -213,16 +204,17 @@ async fn sanitise_pdf(
                 tracing::error!("Failed to send success callback. error={e}");
             }
 
-            if let Err(error) = data
-                .storage
-                .delete_file(&output_file.as_path().to_str().unwrap().to_string())
-            {
-                tracing::error!(
-                    "Failed to clean-up final output file. filename={} error={}",
-                    job.filename,
-                    error
-                );
+            if let Some(clean_up_file) = output_file.file_name() {
+                if let Err(error) = data
+                    .storage
+                    .delete_file(&clean_up_file.to_str().unwrap().to_string())
+                {
+                    tracing::error!(
+                        "Failed to clean-up final output file. filename={clean_up_file:#?} error={error}"
+                    );
+                }
             }
+
             Ok(())
         }
         Ok(Err(error_msg)) => {
