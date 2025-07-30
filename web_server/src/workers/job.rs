@@ -11,6 +11,7 @@ use apalis_sql::sqlx::SqlitePool;
 use procspawn::Pool;
 use sanitiser::pdf::sanitise::regenerate_pdf;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use tokio::sync::Mutex;
 use tracing::instrument;
 
@@ -20,11 +21,24 @@ use crate::storage::FileStorage;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SanitisePDFRequest {
     filename: String,
+    pub id: String,
+    pub success_callback_url: String,
+    pub failure_callback_url: String,
 }
 
 impl SanitisePDFRequest {
-    pub fn new(filename: String) -> Self {
-        Self { filename }
+    pub fn new(
+        filename: String,
+        id: String,
+        success_callback_url: String,
+        failure_callback_url: String,
+    ) -> Self {
+        Self {
+            filename,
+            id,
+            success_callback_url,
+            failure_callback_url,
+        }
     }
 }
 
@@ -120,6 +134,9 @@ async fn sanitise_pdf(
     job: SanitisePDFRequest,
     data: apalis::prelude::Data<Arc<WorkerData>>,
 ) -> Result<(), JobError> {
+    let client = reqwest::Client::new();
+    let outer_job = job.clone();
+
     let fut = tokio::task::spawn_blocking(move || {
         tracing::info!("Processing PDF. filename={}", job.filename);
         let original_file = Path::new(data.storage.base_dir()).join(&job.filename);
@@ -158,15 +175,21 @@ async fn sanitise_pdf(
             }
         });
 
-        match proc_handle.join() {
+        let result = match proc_handle.join() {
             Ok(Some(error_msg)) => {
-                tracing::error!("Failed to sanitise PDF in a background process. error={error_msg}")
+                tracing::error!(
+                    "Failed to sanitise PDF in a background process. error={error_msg}"
+                );
+                Err(error_msg)
             }
             Ok(None) => {
                 tracing::info!("Background process done");
+                Ok(output_file)
             }
             Err(error) => {
-                tracing::error!("To spawn background process. error={}", error);
+                let error_msg = format!("Failed to spawn background process. error={}", error);
+                tracing::error!("{}", error_msg);
+                Err(error_msg)
             }
         };
 
@@ -177,18 +200,120 @@ async fn sanitise_pdf(
                 error
             );
         }
+
+        result
     });
 
     match fut.await {
-        Ok(()) => {
-            tracing::info!("Worker done");
+        Ok(Ok(output_file)) => {
+            // Success - send file to success callback
+            tracing::info!("Sending success callback for job id={}", &outer_job.id);
+            if let Err(e) = send_success_callback(&client, &outer_job, &output_file).await {
+                tracing::error!("Failed to send success callback. error={e}");
+            }
             Ok(())
         }
+        Ok(Err(error_msg)) => {
+            // PDF processing failed - send error to failure callback
+            tracing::info!("Sending failure callback for job id={}", job.id);
+            if let Err(e) = send_failure_callback(&client, &outer_job, &error_msg).await {
+                tracing::error!("Failed to send failure callback. error={e}");
+            }
+            Err(JobError::Failed(Arc::new(Box::new(
+                BackgroundJobError::InvalidPDF,
+            ))))
+        }
         Err(e) => {
-            tracing::error!("Processing failed. error={e}");
+            // Task execution failed
+            let error_msg = format!("Processing task failed. error={e}");
+            tracing::error!("{}", error_msg);
+            if let Err(e) = send_failure_callback(&client, &outer_job, &error_msg).await {
+                tracing::error!("Failed to send failure callback. error={e}");
+            }
             Err(JobError::Failed(Arc::new(Box::new(
                 BackgroundJobError::InvalidPDF,
             ))))
         }
     }
+}
+
+async fn send_success_callback(
+    client: &reqwest::Client,
+    job: &SanitisePDFRequest,
+    output_file: &Path,
+) -> Result<(), anyhow::Error> {
+    let file_content = std::fs::read(output_file)
+        .with_context(|| format!("Failed to read output file: {}", output_file.display()))?;
+
+    let form = reqwest::multipart::Form::new()
+        .text("id", job.id.clone())
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(file_content)
+                .file_name(format!("sanitized_{}.pdf", job.id))
+                .mime_str("application/pdf")?,
+        );
+
+    let response = client
+        .post(&job.success_callback_url)
+        .multipart(form)
+        .send()
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to send success callback to {}",
+                job.success_callback_url
+            )
+        })?;
+
+    if response.status().is_success() {
+        tracing::info!(
+            "Success callback sent successfully. status={}",
+            response.status()
+        );
+    } else {
+        tracing::warn!(
+            "Success callback returned non-success status. status={}",
+            response.status()
+        );
+    }
+
+    Ok(())
+}
+
+async fn send_failure_callback(
+    client: &reqwest::Client,
+    job: &SanitisePDFRequest,
+    error_message: &str,
+) -> Result<(), anyhow::Error> {
+    let payload = serde_json::json!({
+        "id": job.id,
+        "error": error_message
+    });
+
+    let response = client
+        .post(&job.failure_callback_url)
+        .json(&payload)
+        .send()
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to send failure callback to {}",
+                job.failure_callback_url
+            )
+        })?;
+
+    if response.status().is_success() {
+        tracing::info!(
+            "Failure callback sent successfully. status={}",
+            response.status()
+        );
+    } else {
+        tracing::warn!(
+            "Failure callback returned non-success status. status={}",
+            response.status()
+        );
+    }
+
+    Ok(())
 }
