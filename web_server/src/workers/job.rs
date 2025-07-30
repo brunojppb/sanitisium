@@ -245,18 +245,11 @@ async fn send_success_callback(
     let file_content = std::fs::read(output_file)
         .with_context(|| format!("Failed to read output file: {}", output_file.display()))?;
 
-    let form = reqwest::multipart::Form::new()
-        .text("id", job.id.clone())
-        .part(
-            "file",
-            reqwest::multipart::Part::bytes(file_content)
-                .file_name(format!("sanitized_{}.pdf", job.id))
-                .mime_str("application/pdf")?,
-        );
-
     let response = client
         .post(&job.success_callback_url)
-        .multipart(form)
+        .query(&[("id", &job.id)])
+        .header("Content-Type", "application/octet-stream")
+        .body(file_content)
         .send()
         .await
         .with_context(|| {
