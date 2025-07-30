@@ -1,4 +1,4 @@
-use std::{fs, net::TcpListener, sync::Arc};
+use std::{fs, io::ErrorKind, net::TcpListener, sync::Arc};
 
 use actix_web::{
     App, HttpServer,
@@ -69,9 +69,27 @@ async fn run(listener: TcpListener, settings: AppSettings) -> Result<(Server, Ar
 
     // Make sure the file sanitisation directory exists
     match fs::exists(&settings.sanitisation.pdfs_dir) {
-        Ok(false) => fs::create_dir(&settings.sanitisation.pdfs_dir)
-            .expect("Error while creating base dir for file sanitisation"),
-        Ok(true) => {}
+        Ok(false) => match fs::create_dir(&settings.sanitisation.pdfs_dir) {
+            Ok(_) => tracing::info!(
+                "Created file sanitisation base directory at {}",
+                settings.sanitisation.pdfs_dir
+            ),
+            // Multiple concurrent calls could be trying to create the same directory.
+            Err(error) => {
+                if error.kind() != ErrorKind::AlreadyExists {
+                    let message =
+                        format!("Could not create file sanitisation base directory. error={error}");
+                    tracing::error!(message);
+                    panic!("Cannot startup the server. error={message}");
+                }
+            }
+        },
+        Ok(true) => {
+            tracing::info!(
+                "File sanitisation base directory already exists at {}",
+                settings.sanitisation.pdfs_dir
+            );
+        }
         Err(error) => {
             let message =
                 format!("Could not create file sanitisation base directory. error={error}");
