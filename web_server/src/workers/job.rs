@@ -135,13 +135,14 @@ async fn sanitise_pdf(
     data: apalis::prelude::Data<Arc<WorkerData>>,
 ) -> Result<(), JobError> {
     let client = reqwest::Client::new();
-    let outer_job = job.clone();
+    let inner_job = job.clone();
+    let inner_data = data.clone();
 
     let fut = tokio::task::spawn_blocking(move || {
-        tracing::info!("Processing PDF. filename={}", job.filename);
-        let original_file = Path::new(data.storage.base_dir()).join(&job.filename);
-        let output_file =
-            Path::new(data.storage.base_dir()).join(format!("processed_{}", &job.filename));
+        tracing::info!("Processing PDF. filename={}", inner_job.filename);
+        let original_file = Path::new(inner_data.storage.base_dir()).join(&inner_job.filename);
+        let output_file = Path::new(inner_data.storage.base_dir())
+            .join(format!("processed_{}", &inner_job.filename));
 
         let args = ProcData {
             original_file: original_file.to_str().unwrap().into(),
@@ -162,10 +163,10 @@ async fn sanitise_pdf(
         //
         // This is probably more costly, but we can improve this later
         // with a process pool that can be reused across tasks.
-        let proc_handle = procspawn::spawn!(in data.pool, (args) || {
+        let proc_handle = procspawn::spawn!(in inner_data.pool, (args) || {
             match regenerate_pdf(&args.original_file, &args.output_file) {
                 Ok(()) => {
-                    tracing::info!("File regenerated successfuly");
+                    tracing::info!("File regenerated successfully");
                     None
                 }
                 Err(error) => Some(format!(
@@ -193,10 +194,10 @@ async fn sanitise_pdf(
             }
         };
 
-        if let Err(error) = data.storage.delete_file(&job.filename) {
+        if let Err(error) = inner_data.storage.delete_file(&inner_job.filename) {
             tracing::error!(
                 "Failed to clean-up file. filename={} error={}",
-                job.filename,
+                inner_job.filename,
                 error
             );
         }
@@ -207,16 +208,27 @@ async fn sanitise_pdf(
     match fut.await {
         Ok(Ok(output_file)) => {
             // Success - send file to success callback
-            tracing::info!("Sending success callback for job id={}", &outer_job.id);
-            if let Err(e) = send_success_callback(&client, &outer_job, &output_file).await {
+            tracing::info!("Sending success callback for job id={}", &job.id);
+            if let Err(e) = send_success_callback(&client, &job, &output_file).await {
                 tracing::error!("Failed to send success callback. error={e}");
+            }
+
+            if let Err(error) = data
+                .storage
+                .delete_file(&output_file.as_path().to_str().unwrap().to_string())
+            {
+                tracing::error!(
+                    "Failed to clean-up final output file. filename={} error={}",
+                    job.filename,
+                    error
+                );
             }
             Ok(())
         }
         Ok(Err(error_msg)) => {
             // PDF processing failed - send error to failure callback
             tracing::info!("Sending failure callback for job id={}", job.id);
-            if let Err(e) = send_failure_callback(&client, &outer_job, &error_msg).await {
+            if let Err(e) = send_failure_callback(&client, &job, &error_msg).await {
                 tracing::error!("Failed to send failure callback. error={e}");
             }
             Err(JobError::Failed(Arc::new(Box::new(
@@ -227,7 +239,7 @@ async fn sanitise_pdf(
             // Task execution failed
             let error_msg = format!("Processing task failed. error={e}");
             tracing::error!("{}", error_msg);
-            if let Err(e) = send_failure_callback(&client, &outer_job, &error_msg).await {
+            if let Err(e) = send_failure_callback(&client, &job, &error_msg).await {
                 tracing::error!("Failed to send failure callback. error={e}");
             }
             Err(JobError::Failed(Arc::new(Box::new(
