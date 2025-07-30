@@ -102,7 +102,7 @@ flowchart TD
     style M fill:#ffebee
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -137,7 +137,7 @@ curl -X POST "http://localhost:8000/sanitise/pdf?id=my-doc-123&success_callback_
   --data-binary @document.pdf
 ```
 
-## 📊 Callback System
+## Callback System
 
 ### Success Callback
 When PDF processing succeeds, your service receives:
@@ -152,7 +152,7 @@ When processing fails, your service receives:
 - **Content-Type**: `application/json`
 - **Body**: `{"id": "your-document-id", "error": "error description"}`
 
-## 🛠️ Development
+## Development
 
 ### Running Tests
 
@@ -178,7 +178,7 @@ The web server uses YAML configuration with environment variable overrides. See 
 docker-compose up --build
 ```
 
-## 🔧 Technical Details
+## Technical Details
 
 ### PDF Processing Pipeline
 
@@ -190,7 +190,7 @@ docker-compose up --build
 
 ### Performance Characteristics
 
-- **File Size**: Sanitized PDFs are typically 5-10x larger due to image-based approach
+- **File Size**: Sanitized PDFs are typically 5-10x larger due to its image-based approach
 - **Processing Time**: Varies by document size and complexity (typically 1-5 seconds per page)
 - **Memory Usage**: Batched processing keeps memory usage reasonable for large documents
 - **Concurrency**: Supports concurrent processing of multiple documents
