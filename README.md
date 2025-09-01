@@ -1,6 +1,6 @@
 # Sanitisium
 
-**A secure PDF sanitization service that eliminates threats through complete document regeneration**
+**A secure PDF sanitization service that eliminates threats using the [Content Disarm and Reconstruction strategy](https://en.wikipedia.org/wiki/Content_Disarm_%26_Reconstruction)**
 
 Sanitisium is a defensive security tool that provides complete PDF sanitization by regenerating documents from scratch. Instead of attempting to clean malicious content, it takes screenshots of each page and creates an entirely new PDF, ensuring complete elimination of embedded threats like malicious JavaScript, forms, links, and other potentially dangerous elements.
 
