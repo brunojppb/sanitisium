@@ -204,15 +204,14 @@ async fn sanitise_pdf(
                 tracing::error!("Failed to send success callback. error={e}");
             }
 
-            if let Some(clean_up_file) = output_file.file_name() {
-                if let Err(error) = data
+            if let Some(clean_up_file) = output_file.file_name()
+                && let Err(error) = data
                     .storage
                     .delete_file(&clean_up_file.to_str().unwrap().to_string())
-                {
-                    tracing::error!(
-                        "Failed to clean-up final output file. filename={clean_up_file:#?} error={error}"
-                    );
-                }
+            {
+                tracing::error!(
+                    "Failed to clean-up final output file. filename={clean_up_file:#?} error={error}"
+                );
             }
 
             Ok(())

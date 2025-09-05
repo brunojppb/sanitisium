@@ -114,18 +114,18 @@ where
     }
 
     // Update the Pages object with the new page count and kids list
-    if let Ok(pages_obj) = merged_doc.get_object_mut(pages_id) {
-        if let Ok(pages_dict) = pages_obj.as_dict_mut() {
-            // Set the new page count
-            pages_dict.set("Count", all_pages.len() as u32);
+    if let Ok(pages_obj) = merged_doc.get_object_mut(pages_id)
+        && let Ok(pages_dict) = pages_obj.as_dict_mut()
+    {
+        // Set the new page count
+        pages_dict.set("Count", all_pages.len() as u32);
 
-            // Set the new Kids array with all page references
-            let kids: Vec<Object> = all_pages
-                .keys()
-                .map(|&page_id| Object::Reference(page_id))
-                .collect();
-            pages_dict.set("Kids", kids);
-        }
+        // Set the new Kids array with all page references
+        let kids: Vec<Object> = all_pages
+            .keys()
+            .map(|&page_id| Object::Reference(page_id))
+            .collect();
+        pages_dict.set("Kids", kids);
     }
 
     // Update max_id and renumber objects to ensure consistency
