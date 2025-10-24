@@ -12,10 +12,10 @@ use std::{env, fs};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::pdf::load_pdfium::get_pdfium_instance;
+use crate::pdf::load_pdfium::PDFIUM_INSTANCE;
 use crate::pdf::merge::{MergePDFError, merge_pdf_files};
 
-const PAGE_BATCH: u16 = 5;
+const PAGE_BATCH: u16 = 2;
 const JPG_QUALITY: f32 = 70f32;
 const DPI: f32 = 300.0;
 
@@ -56,7 +56,7 @@ pub fn regenerate_pdf<P>(input: &P, output_path: &P) -> Result<(), PDFRegenerati
 where
     P: AsRef<Path> + Debug,
 {
-    let pdfium = get_pdfium_instance();
+    let pdfium = PDFIUM_INSTANCE.inner.lock().unwrap();
 
     let input_filename = input
         .as_ref()
@@ -85,13 +85,16 @@ where
     let mut processed_pages_count = 0;
     let mut written_chuncks_count = 0;
     let mut temp_pdf_files: Vec<_> = Vec::new();
-    let mut bitmap_container: Option<PdfBitmap> = None;
     // Unique identifier for prefixing the temporary cache files.
     // This allows us to prevent any clasing in case consumers
     // are sanitizing the same file at once.
     let unique_temp_id = Uuid::new_v4();
 
     while processed_pages_count < input_doc_length {
+        // Move bitmap allocation into batch scope so it's freed after each batch
+        // This prevents memory accumulation across multiple batches
+        let mut bitmap_container: Option<PdfBitmap> = None;
+
         let mut pdf_pages = Vec::with_capacity(chunk_processing_size as usize);
         let mut doc_out = PdfDocument::new("Clean PDF Document");
         let local_acc: u16 = processed_pages_count;
@@ -143,16 +146,25 @@ where
             let mut png_data = Vec::new();
 
             bitmap.write_to(&mut Cursor::new(&mut png_data), image::ImageFormat::Png)?;
+            // Explicitly drop bitmap to free RGB8 copy immediately
+            drop(bitmap);
+
             // Put back the reusable rendering container
-            // So we can reference it again on the next loop run
-            // preventing allocating another buffer
+            // So we can reference it again on the next loop run within this batch
+            // preventing allocating another buffer for same-size pages
             bitmap_container = Some(rendering_container);
 
             let mut warnings = Vec::new();
             let image = RawImage::decode_from_bytes(&png_data, &mut warnings)
                 .map_err(PDFRegenerationError::BadImageDecoding)?;
 
+            // Explicitly drop png_data to free memory before continuing
+            drop(png_data);
+
             let image_id = doc_out.add_image(&image);
+            // Explicitly drop image after adding to document
+            // The doc_out has its own copy, so we don't need this anymore
+            drop(image);
 
             let width_mm = Mm(width_pts * 25.4 / 72.0);
             let height_mm = Mm(height_pts * 25.4 / 72.0);
@@ -166,6 +178,7 @@ where
             let pdf_page = PdfPage::new(width_mm, height_mm, contents);
             pdf_pages.push(pdf_page);
         }
+
         let mut warnings = Vec::new();
 
         let opts = PdfSaveOptions {
@@ -191,6 +204,17 @@ where
 
         let mut file = File::create(&temp_file)?;
         file.write_all(&pdf_bytes)?;
+        // Ensure data is written to disk correctly
+        file.sync_all()?;
+
+        // Explicitly drop large intermediate objects
+        drop(pdf_bytes);
+        drop(file);
+
+        // Explicitly drop the bitmap container at the end of this batch
+        // This ensures the large bitmap buffer (~26MB for A4 at 300 DPI) is freed
+        // before moving to the next batch, preventing memory accumulation
+        drop(bitmap_container);
 
         temp_pdf_files.push(temp_file);
         written_chuncks_count += 1;
