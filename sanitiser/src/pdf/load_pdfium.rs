@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{LazyLock, Mutex},
+};
 
 use pdfium_render::prelude::Pdfium;
 
@@ -55,7 +58,7 @@ fn _get_pdfium_instance(arch: SupportArch) -> Pdfium {
 
 /// Bind to the library at a specific path during runtime.
 /// Panics if PDFium isn't available during runtime.
-pub fn get_pdfium_instance() -> Pdfium {
+fn get_pdfium_instance() -> Pdfium {
     // We don't care about Intel Macs anymore...
     if cfg!(target_os = "macos") {
         return _get_pdfium_instance(SupportArch::MacOSARM);
@@ -68,3 +71,24 @@ pub fn get_pdfium_instance() -> Pdfium {
     // Sorry Windows folks...
     _get_pdfium_instance(SupportArch::LinuxAMD64)
 }
+
+pub struct PdfiumInstance {
+    pub inner: Mutex<Pdfium>,
+}
+
+impl PdfiumInstance {
+    pub fn new(i: Pdfium) -> Self {
+        Self {
+            inner: Mutex::new(i),
+        }
+    }
+}
+
+unsafe impl Sync for PdfiumInstance {}
+unsafe impl Send for PdfiumInstance {}
+
+/// Shared PDFium instance that is safe to be sent across threads.
+/// PDFium is not thread-safe, so this shared instance is protected behind a mutex
+/// and can only be used by one thread at a time
+pub static PDFIUM_INSTANCE: LazyLock<PdfiumInstance> =
+    LazyLock::new(|| PdfiumInstance::new(get_pdfium_instance()));

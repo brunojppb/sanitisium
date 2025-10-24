@@ -8,36 +8,16 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock, Mutex};
 use std::{env, fs};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::pdf::load_pdfium::{get_pdfium_instance};
+use crate::pdf::load_pdfium::PDFIUM_INSTANCE;
 use crate::pdf::merge::{MergePDFError, merge_pdf_files};
 
 const PAGE_BATCH: u16 = 2;
 const JPG_QUALITY: f32 = 70f32;
 const DPI: f32 = 300.0;
-
-pub struct PdfiumInstance {
-  pub inner: Arc<Mutex<Pdfium>>
-}
-
-impl PdfiumInstance {
-  pub fn new(i: Pdfium) -> Self {
-    Self {
-      inner: Arc::new(Mutex::new(i))
-    }
-  }
-}
-
-unsafe impl Sync for PdfiumInstance {  }
-unsafe impl Send for PdfiumInstance {  }
-
-pub static PDFIUM_INSTANCE: LazyLock<PdfiumInstance> = LazyLock::new(|| {
-    PdfiumInstance::new(get_pdfium_instance())
-});
 
 #[derive(Error, Debug)]
 pub enum PDFRegenerationError {
@@ -76,7 +56,7 @@ pub fn regenerate_pdf<P>(input: &P, output_path: &P) -> Result<(), PDFRegenerati
 where
     P: AsRef<Path> + Debug,
 {
-    let pdfium =PDFIUM_INSTANCE.inner.lock().unwrap();
+    let pdfium = PDFIUM_INSTANCE.inner.lock().unwrap();
 
     let input_filename = input
         .as_ref()
@@ -85,7 +65,7 @@ where
         .ok_or(PDFRegenerationError::InvalidInput)?;
 
     let input_doc = pdfium.load_pdf_from_file(input, None)?;
-    let pages = input_doc.pages();    
+    let pages = input_doc.pages();
 
     let input_doc_length: u16 = pages.len();
 
@@ -238,8 +218,6 @@ where
         written_chuncks_count += 1;
         processed_pages_count += PAGE_BATCH
     }
-
-    
 
     match merge_pdf_files(&temp_pdf_files, &PathBuf::from(output_path.as_ref())) {
         Ok(()) => {
