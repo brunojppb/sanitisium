@@ -178,7 +178,7 @@ where
             let pdf_page = PdfPage::new(width_mm, height_mm, contents);
             pdf_pages.push(pdf_page);
         }
-        
+
         let mut warnings = Vec::new();
 
         let opts = PdfSaveOptions {
@@ -204,7 +204,7 @@ where
 
         let mut file = File::create(&temp_file)?;
         file.write_all(&pdf_bytes)?;
-         // Ensure data is written to disk correctly
+        // Ensure data is written to disk correctly
         file.sync_all()?;
 
         // Explicitly drop large intermediate objects
